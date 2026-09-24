@@ -9,6 +9,7 @@
 - **参谋台（Agent）**：只读讨论模式与写作执行模式分离，工具面按场景白名单加载
 - **人物 / 世界观 / 事件账本**：AI 只提案，人工采纳后才写入台账，带乐观锁与审计
 - **上下文管理**：多 Provider 上下文预算管道、四节式会话压缩、来源快照过期检测
+- **本地向量检索（RAG）**：章节正文自动切块建向量索引，Embedding 由本地模型完成（`@xenova/transformers`，不出本机），同书余弦 top-k 检索供上下文管道、证据搜索与 LLM 工具调用
 - **风格仓库**：作家卡（人设 + 指纹 + 规则 + 范文）管理与体检
 - **本地持久化**：sql.js（SQLite WASM）单文件数据库，含单实例锁与自动备份，无需外部服务
 
@@ -22,6 +23,8 @@ npm start
 ```
 
 打开 http://localhost:3000 ，在「设置」页填入你的 OpenAI 兼容接口参数（base_url / api_key / model）即可使用。
+
+首次启动会下载本地 Embedding 模型（约 90MB，用于章节向量索引与检索），之后完全离线可用。
 
 端口可用环境变量覆盖：`PORT=8080 npm start`。
 
@@ -45,6 +48,7 @@ NOVEL_DB_FILE=/tmp/qa.db npm test        # Windows PowerShell: $env:NOVEL_DB_FIL
 ## 技术栈
 
 - 后端：Node.js + Express 5，sql.js（SQLite WASM）持久化到 `data/novel.db`
+- 检索：`@xenova/transformers` 本地 Embedding + 余弦检索（`server/vector/`），向量存于同一份 SQLite 库
 - 前端：原生 ES 模块 SPA（`public/`），无构建步骤
 - LLM：OpenAI 兼容协议，设置页可切换服务商与模型
 

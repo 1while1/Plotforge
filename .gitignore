@@ -1,0 +1,13 @@
+node_modules/
+data/
+/backups/
+*.log
+*.txt
+*.db
+*.db.lock
+.zcode/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+nul

@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>作者印记蒸馏 · map 进度看板</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel2: #1e222b; --line: #2a2f3a;
+    --fg: #e6e9ef; --dim: #8b93a3; --accent: #4da3ff;
+    --ok: #35c46b; --warn: #e0a53c; --err: #e5645c;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 14px/1.55 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
+  .num { font-family: ui-monospace, SFMono-Regular, Consolas, "Courier New", monospace; }
+  header { padding: 18px 22px 12px; border-bottom: 1px solid var(--line); display: flex;
+    align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  h1 { font-size: 17px; margin: 0; font-weight: 600; }
+  .sub { color: var(--dim); font-size: 12.5px; }
+  main { padding: 16px 22px 40px; max-width: 1180px; }
+  section { margin-bottom: 22px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim);
+    margin: 0 0 10px; font-weight: 600; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .card h3 { margin: 0 0 10px; font-size: 14.5px; display: flex; align-items: center; gap: 8px; }
+  .row { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; }
+  .row span:first-child { color: var(--dim); }
+  .badge { font-size: 11.5px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--dim); }
+  .badge.running, .badge.done { color: #06140b; background: var(--ok); border-color: var(--ok); }
+  .badge.stale { color: #1a0f04; background: var(--warn); border-color: var(--warn); }
+  .badge.unknown { color: var(--dim); }
+  .badge.provider { color: var(--accent); border-color: #274b74; background: #10203a; }
+  .bar { height: 7px; background: var(--panel2); border-radius: 999px; overflow: hidden; margin: 8px 0 4px; }
+  .bar > i { display: block; height: 100%; background: linear-gradient(90deg, #2f6fd0, var(--accent)); }
+  .bar.warn > i { background: linear-gradient(90deg, #b7791f, var(--warn)); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--dim); font-weight: 600; font-size: 12px; }
+  pre { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px 12px; overflow: auto; max-height: 260px; font-size: 12px; line-height: 1.5; margin: 0; }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+  .kpi { display: flex; gap: 22px; flex-wrap: wrap; }
+  .kpi div { min-width: 96px; }
+  .kpi b { display: block; font-size: 20px; font-weight: 600; }
+  .kpi small { color: var(--dim); font-size: 12px; }
+  .err { color: var(--err); }
+  .warnc { color: var(--warn); }
+  .okc { color: var(--ok); }
+  footer { color: var(--dim); font-size: 12px; padding: 0 22px 30px; }
+  code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>作者印记蒸馏 · map 进度看板</h1>
+  <span class="sub" id="stamp">加载中…</span>
+  <span class="sub">每 3 秒自刷新 · 只读（不改任何产物）</span>
+</header>
+
+<main>
+  <section>
+    <h2>总览</h2>
+    <div class="card">
+      <div class="kpi" id="kpi"></div>
+      <div class="bar" id="totalBar"><i style="width:0%"></i></div>
+      <div class="sub" id="totalNote"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>两条线</h2>
+    <div class="cards" id="lanes"></div>
+  </section>
+
+  <section>
+    <h2>按作者</h2>
+    <div class="card">
+      <table>
+        <thead><tr>
+          <th>作者</th><th>完成 / 总数</th><th>剩余</th><th>保留<br><small>严格</small></th>
+          <th>保留<br><small>归一后</small></th><th>丢弃</th>
+          <th>留存率</th><th>证据/块<br><small>严格 / 归一后</small></th><th>输出 tok</th><th>渠道</th><th>最新产出</th>
+        </tr></thead>
+        <tbody id="authors"></tbody>
+      </table>
+      <div class="sub" id="worksNote" style="margin-top:8px"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>日志（尾部）</h2>
+    <div class="cols" id="logs"></div>
+  </section>
+</main>
+<footer>
+  口径：完成数按 JSONL 去重块计（后行覆盖前行，腐败行忽略）；留存率 = 保留/（保留+丢弃）；
+  速率与 ETA 取最近 10 分钟的完成节奏。产物与日志在 <code>data/corpus/</code> 与 <code>data/tmp-p8/</code>（均不入 git）。<br>
+  <b>两个保留列</b>：<code>严格</code> = 主集 <code>map/</code>（闸门 4 逐字子串 + 七个中文维度）；
+  <code>归一后</code> = 派生集 <code>map-relaxed/</code>（多算「空白不敏感」与「维度标签别名」两类离线复核，
+  见报告 09 §6.9/§6.10）。<b>验证与下游消费应看归一后那一列</b>（它比严格口径多约 33%）。
+</footer>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const fmt = (n, d = 0) => n == null ? '—' : Number(n).toFixed(d);
+const pct = (x) => x == null ? '—' : (100 * x).toFixed(1) + '%';
+const hms = (min) => {
+  if (min == null || !isFinite(min)) return '—';
+  const m = Math.max(0, Math.round(min));
+  return m >= 60 ? `${Math.floor(m / 60)} 小时 ${m % 60} 分` : `${m} 分`;
+};
+const ago = (ms) => {
+  if (ms == null) return '—';
+  const s = Math.round(ms / 1000);
+  if (s < 90) return s + ' 秒前';
+  if (s < 5400) return Math.round(s / 60) + ' 分钟前';
+  return (s / 3600).toFixed(1) + ' 小时前';
+};
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const tok = (n) => n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(0) + 'k' : String(n);
+
+function renderLane(l) {
+  if (l.recovery) {
+    return `<div class="card">
+    <h3>${esc(l.label)} <span class="badge provider">${esc(l.provider)}</span>
+      <span class="badge ${esc(l.status)}">${l.status === 'running' ? '在跑' : l.status === 'stale' ? '疑似停滞' : '未知'}</span></h3>
+    <div class="row"><span>性质</span><span>无固定配额：只跑缺块（不参与进度统计）</span></div>
+    <div class="row"><span>日志更新</span><span>${ago(l.logAgeMs)}</span></div>
+    <div class="row"><span>本轮重试耗尽</span><span class="num ${l.failures ? 'err' : ''}">${l.failures}</span></div>
+    ${l.heartbeat ? `<div class="sub" style="margin-top:6px">${esc(l.heartbeat.replace(/^\[map\]\s*/, ''))}</div>` : ''}
+    ${l.markers && l.markers.length ? `<div class="sub" style="margin-top:6px">${l.markers.slice(-3).map(esc).join('<br>')}</div>` : ''}
+  </div>`;
+  }
+  const pr = l.done + l.remaining ? l.done / (l.done + l.remaining) : 0;
+  return `<div class="card">
+    <h3>${esc(l.label)} <span class="badge provider">${esc(l.provider)}</span>
+      <span class="badge ${esc(l.status)}">${l.status === 'running' ? '在跑' : l.status === 'done' ? '已完成' : l.status === 'stale' ? '疑似停滞' : '未知'}</span></h3>
+    <div class="row"><span>分工</span><span>${l.authors.map(esc).join(' → ')}</span></div>
+    <div class="row"><span>完成 / 剩余</span><span class="num">${l.done} / ${l.remaining}</span></div>
+    <div class="bar"><i style="width:${(100 * pr).toFixed(1)}%"></i></div>
+    <div class="row"><span>速率（近 10 分钟）</span><span class="num">${l.perMin == null ? '—' : fmt(l.perMin, 1)} 块/分</span></div>
+    <div class="row"><span>预计剩余</span><span class="num">${hms(l.etaMinutes)}</span></div>
+    <div class="row"><span>最新产出</span><span>${ago(l.ageMs)}</span></div>
+    <div class="row"><span>本轮重试耗尽</span><span class="num ${l.failures ? 'err' : ''}">${l.failures}</span></div>
+    ${l.heartbeat ? `<div class="sub" style="margin-top:6px">${esc(l.heartbeat.replace(/^\[map\]\s*/, ''))}</div>` : ''}
+  </div>`;
+}
+
+function renderAuthors(list) {
+  $('#authors').innerHTML = list.map((a) => {
+    const pr = a.total ? a.done / a.total : 0;
+    const models = Object.keys(a.models || {});
+    return `<tr>
+      <td>${esc(a.name)}<div class="bar ${pr < 0.5 ? 'warn' : ''}" style="width:150px"><i style="width:${(100 * pr).toFixed(1)}%"></i></div></td>
+      <td class="num">${a.done} / ${a.total}</td>
+      <td class="num">${a.remaining}</td>
+      <td class="num">${a.kept}</td>
+      <td class="num okc">${a.keptRelaxed}${a.relaxedStale ? ' <span class="warnc">⚠</span>' : ''}</td>
+      <td class="num ${a.dropped ? 'warnc' : ''}">${a.dropped}</td>
+      <td class="num">${pct(a.retention)}</td>
+      <td class="num">${fmt(a.keptPerBlock, 2)} / <b>${fmt(a.keptPerBlockRelaxed, 2)}</b></td>
+      <td class="num">${tok(a.output)}</td>
+      <td>${models.map(esc).join('<br>') || '—'}</td>
+      <td>${ago(a.lastAt ? Date.now() - Date.parse(a.lastAt) : null)}</td>
+    </tr>`;
+  }).join('');
+  const notes = list.filter((a) => a.works.length || a.archived.length).map((a) => {
+    const w = a.works.map((x) => `${x.work} ${x.blocks}${x.total ? '/' + x.total : ''} 块`).join('、');
+    const arch = a.archived.length ? `｜旧产物另存 ${a.archived.join('、')}` : '';
+    return `${a.name}：${w || '（暂无分作品明细）'}${arch}`;
+  });
+  $('#worksNote').innerHTML = notes.map(esc).join('<br>');
+}
+
+function renderLogs(lanes) {
+  $('#logs').innerHTML = lanes.map((l) => `<div class="card">
+    <h3>${esc(l.label)} <span class="sub">${esc(l.logFile)}</span></h3>
+    ${l.markers.length ? `<div class="sub" style="margin-bottom:6px">${l.markers.map(esc).join('<br>')}</div>` : ''}
+    ${l.lastFailures && l.lastFailures.length ? `<div class="sub err" style="margin-bottom:6px">最近失败：${l.lastFailures.map(esc).join('<br>')}</div>` : ''}
+    <pre>${esc((l.tail || []).slice(-18).join('\n'))}</pre>
+  </div>`).join('');
+}
+
+function render(s) {
+  const t = s.totals;
+  $('#kpi').innerHTML = `
+    <div><b class="num">${t.done}<small> / ${t.total}</small></b><small>已完成块</small></div>
+    <div><b class="num">${t.remaining}</b><small>剩余块</small></div>
+    <div><b class="num ${t.perMin ? '' : 'warnc'}">${t.perMin == null ? '—' : fmt(t.perMin, 1)}</b><small>块/分（两线合计）</small></div>
+    <div><b class="num">${hms(t.etaMinutes)}</b><small>预计剩余时间</small></div>
+    <div><b class="num">${t.etaAt ? new Date(t.etaAt).toLocaleTimeString('zh-CN', { hour12: false }) : '—'}</b><small>预计完成时刻</small></div>
+    <div><b class="num">${t.kept}</b><small>保留（严格口径）</small></div>
+    <div><b class="num okc">${t.keptRelaxed}</b><small>保留（归一后）</small></div>
+    <div><b class="num">${pct(t.retention)}</b><small>留存率</small></div>
+    <div><b class="num">${tok(t.input)} / ${tok(t.output)}</b><small>输入 / 输出 tok</small></div>`;
+  const pr = t.total ? t.done / t.total : 0;
+  $('#totalBar').innerHTML = `<i style="width:${(100 * pr).toFixed(1)}%"></i>`;
+  $('#totalNote').textContent = `总进度 ${(100 * pr).toFixed(1)}%｜归档旧产物 ${t.archived} 个文件` +
+    (t.relaxedStale ? '｜⚠ map-relaxed 落后于主集：重跑 revalidate（主集新增行后不自动更新）' : '');
+  $('#lanes').innerHTML = s.lanes.map(renderLane).join('');
+  renderAuthors(s.authors);
+  renderLogs(s.lanes);
+}
+
+async function tick() {
+  try {
+    const r = await fetch('/api/status', { cache: 'no-store' });
+    const s = await r.json();
+    if (s.error) throw new Error(s.error);
+    render(s);
+    $('#stamp').textContent = '数据时刻 ' + new Date(s.now).toLocaleTimeString('zh-CN', { hour12: false });
+  } catch (e) {
+    $('#stamp').innerHTML = '<span class="err">看板读取失败：' + esc(e.message) + '（服务是否还在跑？）</span>';
+  }
+}
+tick();
+setInterval(tick, 3000);
+</script>
+</body>
+</html>

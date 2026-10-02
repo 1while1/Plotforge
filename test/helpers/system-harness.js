@@ -30,6 +30,7 @@ const {
   installFetchStub, sseStub, jsonStub, chatPayload, toolCall, readStreamEvents, waitUntil,
 } = require('./llm-stub');
 const { installEmbedGate, waitFor, guardOutboundFetch } = require('./vector-embed-gate');
+const { RETRY_MAX_ATTEMPTS } = require('../../server/llm');
 
 const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const STUB_BASE_URL = 'http://llm-stub.local/v1';
@@ -167,10 +168,12 @@ async function drainResponse(res) {
 function beginScript(ctx, steps) {
   ctx.stub.responders.length = 0;
   const startCalls = ctx.stub.calls.length;
-  steps.forEach(step => ctx.stub.responders.push(init => {
-    const body = init && init.body ? JSON.parse(init.body) : null;
-    return step(body);
-  }));
+  steps.forEach(step => {
+    ctx.stub.responders.push(init => {
+      const body = init && init.body ? JSON.parse(init.body) : null;
+      return step(body);
+    });
+  });
   return {
     finish() {
       const llmRequests = ctx.stub.calls.length - startCalls;
@@ -1350,7 +1353,8 @@ async function faultDiskFailure(ctx, seed, { book, inv, record, diskFault }) {
 // —— 组 7：断连/取消/无事件超时（后续工具停止、锁释放、已生效结果可查）——
 async function faultDisconnect(ctx, seed, { book, conversation, inv, record }) {
   const c = checks(record);
-  const timings = record.timings = {};
+  record.timings = {};
+  const timings = record.timings;
   const target = book.selected;
   // (a) 客户端断连（真实 AbortController）
   const tAbort = Date.now();
@@ -1459,7 +1463,10 @@ async function faultUpstreamFinishes(ctx, seed, { book, inv, record }) {
     const errEvent = res429.events.find(e => e && e.type === 'error');
     const llmRow = db.get("SELECT status FROM llm_calls WHERE book_id = ? AND scope = 'chat-stream' ORDER BY id DESC LIMIT 1", [book.bookId]);
     const runRow = db.get('SELECT status, reason FROM agent_runs WHERE request_id = ?', [`f8-${seed}-429`]);
-    c.code429CallsBounded = stats429.llmRequests <= 6;
+    // 2026-09-30：判据从策略常量推导（旧硬编码 ≤6 按 RETRY_MAX_ATTEMPTS=3 校准；7f1f0e1 调 5
+    // ＋afed7e5 首轮流零外发重试后同剧本实测 7 次）。有界性上界＝首轮流 2 次尝试×RETRY_MAX_ATTEMPTS
+    // ＋无工具兜底 RETRY_MAX_ATTEMPTS；语义仍是「有限重试、不无限打」。
+    c.code429CallsBounded = stats429.llmRequests <= RETRY_MAX_ATTEMPTS * 3;
     c.code429ErrorVisible = !!errEvent;
     c.code429RunStatus = runRow ? runRow.status : null;
     c.code429RunReason = runRow ? runRow.reason : null;
@@ -1498,7 +1505,9 @@ async function faultUpstreamFinishes(ctx, seed, { book, inv, record }) {
     });
     const stats500 = script500.finish();
     const runRow = db.get('SELECT status, reason FROM agent_runs WHERE request_id = ?', [`f8-${seed}-500`]);
-    c.code5xxCallsBounded = stats500.llmRequests <= 6;
+    // 2026-09-30：同 code429CallsBounded——判据随策略常量推导（首轮流 2 次尝试×RETRY_MAX_ATTEMPTS
+    // ＋兜底 RETRY_MAX_ATTEMPTS；旧硬编码 ≤6 为 3 次重试时代口径）
+    c.code5xxCallsBounded = stats500.llmRequests <= RETRY_MAX_ATTEMPTS * 3;
     c.code5xxRunStatus = runRow ? runRow.status : null;
     c.code5xxRunReason = runRow ? runRow.reason : null;
     c.code5xxNoFalseSuccess = !res500.events.some(e => e && e.type === 'done' && e.run && e.run.status === 'finished');

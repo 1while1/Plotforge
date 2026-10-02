@@ -1,30 +1,38 @@
-// S4-05 / 任务书 05「统一可见状态，不再依靠聊天话术猜结果」页面回归。
-// 载入真实 public/index.html 的 id 集合与真实页面代码（chat-event-hub.js、run-status.js、
-// book-chat.js、agent.js、book.js、workbench-shell.js），用最小 DOM/App 桩跑真实代码，钉住：
+// S5-10（Plan §5.1 冻结测试转写映射；charter §2 豁免流程）：S4-05「统一可见状态，不再依靠聊天话术
+// 猜结果」页面回归的 React 侧等价重钉。
+//
+// 缘起：public/legacy/run-status.js（666 行）本片 git rm 全退役，纯逻辑/单例状态/命令式渲染逐字
+// 迁入 frontend/lib/run-status.js（createRunStatus(deps) 全注入：doc/app/bookPage），旧名
+// window.RunStatus 由 legacy-bridge.jsx 守卫式承接。旧 9 例 → 新 9 例＝1 条退役见证＋8 条等价
+// （旧断言逐字保留，仅装载源与宿主由 vm 真源码改为 lib 实例注入；去 book.js 胶水＝renderWritingStatus
+// 拆成 runStatus.renderWritingSaveBadge 直调，React 等价物在 BookShell.renderWritingStatus，
+// 另由 BookShell.test.jsx R8-2/R8-3 承接）。
+//
+// 钉住（原口径逐条沿用）：
 //   1) 统一任务卡：正在读取/执行、待确认、已拒绝、已暂停、失败、中断、完成七种徽标；
 //      length 截断必须显示「已暂停」而不是「完成」；完成必须带可查看的结果引用；
 //      工具细节默认折叠，展开可见「目标」与「来源版本」（缺字段写「未提供」，不臆造）。
 //   2) 保存状态独立三分：本地未保存 / 已应用未落盘 / 已保存；任务 finished 不等于当前新输入
 //      已经保存；S1 的 503 PERSISTENCE_PENDING 之后徽标必须是「已应用未落盘」。
-//   3) 另一空间改了当前资料：只提示「资料更新」并给「查看差异 / 刷新」；脏正文不被覆盖、
-//      聊天历史不自动加入。
+//   3) 另一空间改了当前资料：只提示「资料更新」并给「查看差异 / 刷新」；脏正文不被覆盖。
 //   4) 刷新后从服务端 run/action 重建（GET /chat 的 message.run 快照），不由浏览器上一条气泡猜；
-//      待确认卡与当前会话绑定；网络中断显示「未知（待恢复）」，不臆造失败或成功。
+//      网络中断显示「未知（待恢复）」，不臆造失败或成功。
 //   5) 状态查询按需或页面可见时低频轮询，完成后停止；不接受秒级轮询。
 //
-// 桩的纪律（沿用 S4-04b 口径）：document.getElementById 请求 public/index.html 里不存在的 id
+// 桩的纪律（沿用 S4-04b 口径）：document.getElementById 请求 frontend/index.html 里不存在的 id
 // 会被记入 missingIds 并返回 null，用例显式断言 missingIds 为空——不允许「桩比页面宽」。
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const vm = require('node:vm');
 const fs = require('node:fs');
 const path = require('node:path');
 
 const root = path.join(__dirname, '..');
-const RS_PATH = path.join(root, 'public/run-status.js');
+const RS_LIB = path.join(root, 'frontend/lib/run-status.js');
+const RS_LEGACY = path.join(root, 'public/legacy/run-status.js');
+const BRIDGE = path.join(root, 'frontend/bridges/legacy-bridge.jsx');
 
 function indexHtml() {
-  return fs.readFileSync(path.join(root, 'public/index.html'), 'utf8');
+  return fs.readFileSync(path.join(root, 'frontend/index.html'), 'utf8');
 }
 function indexIds() {
   const ids = new Set();
@@ -38,6 +46,44 @@ const HTML = indexHtml();
 
 // S4-05 必须提供的骨架（断言打在真实 index.html 上）
 const REQUIRED_IDS = ['writing-run-card', 'agent-run-card', 'workbench-notify', 'workbench-notify-pop', 'workbench-notify-title', 'workbench-notify-body', 'workbench-notify-link', 'workbench-toast', 'writing-status-save'];
+
+// 装载：data-URL import 真源码（仅说明符解析；test/chat-workspace-react.test.js:32 先例）。
+// P6-2 ⑨（Plan §2.4 T-E3）：run-status.js 去全局后经模块单例取 App（`getApp()`）并直取写作状态缝，
+// 不再是「零依赖单件」；data URL 无法解析相对说明符（真错因 ERR_UNSUPPORTED_RESOLVE_REQUEST），
+// 故把依赖说明符解析为真源码 data URL（零语义变换，逐条自检命中）。
+function dataUrl(src) {
+  return 'data:text/javascript;base64,' + Buffer.from(src, 'utf8').toString('base64');
+}
+
+function readFe(rel) {
+  return fs.readFileSync(path.join(root, rel), 'utf8');
+}
+
+function libSource() {
+  const hub = readFe('frontend/lib/chat-event-hub.js');
+  assert.equal(hub.indexOf('import '), -1, 'chat-event-hub.js 依赖链不漂移（应零 import）');
+  const runtimeOrig = readFe('frontend/lib/app-runtime.js');
+  const runtime = runtimeOrig.replace('"./chat-event-hub.js"', '"' + dataUrl(hub) + '"');
+  assert.notEqual(runtime, runtimeOrig, 'app-runtime.js 的相对 import 说明符未命中替换');
+  let src = readFe('frontend/lib/run-status.js');
+  const pairs = [
+    ['"./app-runtime.js"', dataUrl(runtime)],
+    ['"./writing-status.js"', dataUrl(readFe('frontend/lib/writing-status.js'))],
+  ];
+  for (const [spec, url] of pairs) {
+    assert.equal(src.split(spec).length - 1, 1, 'run-status.js 依赖说明符应恰一处且必须命中：' + spec);
+    src = src.split(spec).join('"' + url + '"');
+  }
+  // 漂移闸门：新增相对依赖而不登记进本清单 ⇒ 红
+  assert.equal(/from\s+"\.{1,2}\//.test(src), false, 'run-status.js 不得残留相对说明符');
+  return src;
+}
+
+let modPromise = null;
+function loadLib() {
+  if (!modPromise) modPromise = import(dataUrl(libSource()));
+  return modPromise;
+}
 
 function jsonResponse(body, status) {
   return new Response(JSON.stringify(body), { status: status || 200, headers: { 'Content-Type': 'application/json' } });
@@ -115,7 +161,10 @@ function harness(opts) {
     };
     el.querySelector = sel => descendants(el).find(n => matches(n, sel)) || null;
     el.querySelectorAll = sel => descendants(el).filter(n => matches(n, sel));
-    el.addEventListener = (name, fn) => { (el.listeners[name] = el.listeners[name] || []).push(fn); };
+    el.addEventListener = (name, fn) => {
+      if (!el.listeners[name]) el.listeners[name] = [];
+      el.listeners[name].push(fn);
+    };
     el.removeEventListener = () => {};
     el.setAttribute = () => {};
     el.focus = () => {};
@@ -145,7 +194,9 @@ function harness(opts) {
     const re = /<(\/?)([a-zA-Z0-9]+)((?:\s+[^<>]*?)?)\/?>/g;
     let last = 0;
     let m;
-    while ((m = re.exec(html))) {
+    for (;;) {
+      m = re.exec(html);
+      if (!m) break;
       const text = html.slice(last, m.index);
       if (text.trim()) pushText(stack[stack.length - 1], text);
       last = re.lastIndex;
@@ -173,7 +224,9 @@ function harness(opts) {
   function applyAttrs(node, attrs) {
     const re = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*"([^"]*)")?/g;
     let m;
-    while ((m = re.exec(attrs))) {
+    for (;;) {
+      m = re.exec(attrs);
+      if (!m) break;
       const name = m[1];
       const val = m[2] === undefined ? '' : m[2];
       if (name === 'class') node.className = val;
@@ -260,54 +313,19 @@ function harness(opts) {
     };
   }
 
-  const context = {
-    window: { App }, App, document: doc, console,
-    localStorage: storageOf(storage),
-    sessionStorage: storageOf(session),
-    fetch: fetchStub, setTimeout, clearTimeout,
-    // 定时器桩：页面低频轮询的 setInterval 不真的起定时器（用例用 watcher.tick() 手动驱动），
-    // 否则一个活着的 interval 会让测试进程不退出。
-    setInterval: () => 1, clearInterval: () => {},
-    TextDecoder, AbortController, URLSearchParams,
-    confirm: () => true,
-    location: { hash: '' },
-  };
-  context.window.document = doc;
-  context.window.localStorage = context.localStorage;
-  context.window.sessionStorage = context.sessionStorage;
-  context.window.location = context.location;
-  // 写作页骨架：脏标记与保存管道的真实实现在 book-chapters.js（不在本文件路径上），
-  // 这里只提供 hasUnsavedChanges / selectChapter 两个页面级入口作为可编程输入。
+  // 写作页骨架：脏标记与保存管道的真实实现在 React 编辑器（ChapterEditorPanel）里，
+  // 这里只提供 hasUnsavedChanges 页面级入口作为可编程输入（等值旧 book.js 消费面）。
   const page = {
     dirty: false,
     reloads: [],
     hasUnsavedChanges() { return !!page.dirty; },
     selectChapter(id) { page.reloads.push(id); return Promise.resolve(true); },
   };
-  context.window.BookPage = page;
-  context.BookPage = page;
-
-  const load = name => vm.runInNewContext(fs.readFileSync(path.join(root, name), 'utf8'), context);
-  load('public/chat-event-hub.js');
-  context.ChatEventHub = context.window.ChatEventHub;
-  const hasRunStatus = fs.existsSync(RS_PATH);
-  if (hasRunStatus) { load('public/run-status.js'); context.RunStatus = context.window.RunStatus; }
-  load('public/book-chat.js');
-  load('public/agent.js');
-  context.AgentPage = context.window.AgentPage;
-  load('public/book.js');
-  load('public/workbench-shell.js');
 
   const allButtons = () => Array.from(dyn.values()).filter(el => el.tagName === 'BUTTON' || el.tagName === 'A');
 
   return {
-    App, doc, requests, toasts, modals, storage, session, page,
-    hasRunStatus,
-    RS: context.window.RunStatus,
-    hub: context.window.ChatEventHub,
-    bookPage: context.window.BookPage,
-    agentPage: context.window.AgentPage,
-    workbench: context.window.WorkbenchShell,
+    App, doc, requests, toasts, modals, storage, session, page, bookPage: page,
     node: id => doc.getElementById(id),
     text: id => { const n = doc.getElementById(id); return n ? n.textContent : null; },
     missingIds: () => Array.from(missing),
@@ -322,38 +340,59 @@ function harness(opts) {
       const n = doc.getElementById(id);
       if (!n) return 0;
       const fns = (n.listeners[type] || []).slice();
-      fns.forEach(fn => fn({ preventDefault() {} }));
+      fns.forEach(fn => {
+        fn({ preventDefault() {} });
+      });
       if (n.onclick && type === 'click') n.onclick({ preventDefault() {} });
       return fns.length + (n.onclick && type === 'click' ? 1 : 0);
     },
   };
 }
 
-function requireRS(h, what) {
-  assert.ok(h.hasRunStatus, 'public/run-status.js 必须存在（S4-05 统一任务卡/保存三态/资料更新）');
-  assert.ok(h.RS, 'public/run-status.js 必须导出 window.RunStatus（' + what + '）');
-  return h.RS;
+// React 侧实例（全注入；等价旧「vm 装载真源码 + window.App/BookPage/document 全局」）
+async function instanceOf(h) {
+  const mod = await loadLib();
+  return mod.createRunStatus({ doc: h.doc, app: h.App, bookPage: h.bookPage });
 }
 
-const tick = () => new Promise(r => setImmediate(r));
+// ---------- 退役见证 ----------
 
-// ---------- 骨架 ----------
-
-test('S4-05 骨架：run-status.js 与三处任务卡容器、状态条保存徽标都在真实页面上', () => {
-  assert.ok(fs.existsSync(RS_PATH), 'public/run-status.js 必须存在（S4-05 统一可见状态）');
-  assert.ok(/<script src="run-status\.js(\?[^"]*)?"><\/script>/.test(HTML), 'index.html 必须加载 run-status.js（统一状态模块）');
+test('S5-10 退役见证：run-status.js 不在盘、index.html 零命中；三处任务卡容器与状态条保存徽标仍在；React 供给件在位', async () => {
+  assert.equal(fs.existsSync(RS_LEGACY), false, 'public/legacy/run-status.js 必须已退役（git rm）');
+  assert.equal(/legacy\/run-status\.js/.test(HTML), false, 'index.html 不得再加载 run-status.js（React 供给）');
   const missing = REQUIRED_IDS.filter(id => !CLIENT_IDS.has(id));
   assert.deepEqual(missing, [], 'index.html 必须提供真实 id：' + missing.join(', '));
   assert.ok(HTML.indexOf('id="writing-run-card"') > 0, '写作页必须有 #writing-run-card');
   assert.ok(HTML.indexOf('id="agent-run-card"') > 0, 'Agent 台必须有 #agent-run-card');
   assert.ok(HTML.indexOf('id="workbench-notify"') > 0, '工作台必须有 #workbench-notify（任务提示铃铛：Toast + 铃铛回看形态）');
+  // React 供给件在位：lib 双导出＋桥守卫式旧名承接恰一处
+  const mod = await loadLib();
+  assert.equal(typeof mod.createRunStatus, 'function', 'frontend/lib/run-status.js 必须导出 createRunStatus(deps)');
+  assert.equal(typeof mod.runStatus.taskBadge, 'function', '浏览器单例 runStatus 必须在位');
+  // P6-2 ⑨（Plan §2.4 T-E3）：旧名承接面（legacy-bridge.jsx 恰一处 `window.RunStatus = runStatus`）
+  // 随本片退役 ⇒ 断言反转为**零命中＋lib 单例被消费方直取**（vitest 侧 run-status 面由
+  // frontend/lib/workspace-state.test.js／WorkbenchPage.test.jsx 的真模块见证）。
+  const bridge = fs.readFileSync(BRIDGE, 'utf8');
+  assert.equal((bridge.match(/window\.RunStatus\b/g) || []).length, 0, '旧名 window.RunStatus 必须零命中（P6-2 退役）');
+  assert.equal(bridge.indexOf('window.RunStatus'), -1, '桥不得再出现 window.RunStatus（含守卫与赋值）');
+  for (const rel of [
+    'frontend/pages/BookShell.jsx',
+    'frontend/pages/WorkbenchPage.jsx',
+    'frontend/components/AgentWorkspace.jsx',
+    'frontend/hooks/use-chat-workspace.js',
+  ]) {
+    assert.ok(
+      /import \{ runStatus \} from "\.\.\/lib\/run-status\.js";/.test(readFe(rel)),
+      rel + ' 必须经 lib 单例直取 runStatus（原 window.RunStatus 消费方）',
+    );
+  }
 });
 
 // ---------- 任务卡 ----------
 
-test('任务徽标覆盖七种状态；length 截断显示「已暂停」而不是「完成」', () => {
+test('任务徽标覆盖七种状态；length 截断显示「已暂停」而不是「完成」', async () => {
   const h = harness();
-  const RS = requireRS(h, '任务徽标');
+  const RS = await instanceOf(h);
   const taskBadgeForLength = RS.taskBadge({ status: 'paused', reason: 'output_truncated' });
   assert.equal(taskBadgeForLength, '已暂停');
   assert.equal(RS.taskBadge({ status: 'paused', reason: 'result_budget' }), '已暂停');
@@ -369,9 +408,9 @@ test('任务徽标覆盖七种状态；length 截断显示「已暂停」而不�
   assert.equal(RS.taskBadge({ status: 'weird' }), '未知（待恢复）');
 });
 
-test('任务卡：完成必须带可查看的结果引用；工具细节默认折叠、展开可见目标与来源版本', () => {
+test('任务卡：完成必须带可查看的结果引用；工具细节默认折叠、展开可见目标与来源版本', async () => {
   const h = harness();
-  const RS = requireRS(h, '任务卡渲染');
+  const RS = await instanceOf(h);
   const host = h.node('writing-run-card');
   assert.ok(host, '#writing-run-card 必须存在');
 
@@ -415,9 +454,9 @@ test('任务卡：完成必须带可查看的结果引用；工具细节默认�
   assert.ok(host.textContent.indexOf('没有可核验的结果引用') >= 0, '完成但无结果引用时必须写明：' + host.textContent);
 });
 
-test('任务卡：失败/中断给出可执行的下一步；未知状态不臆造失败或成功（网络中断）', () => {
+test('任务卡：失败/中断给出可执行的下一步；未知状态不臆造失败或成功（网络中断）', async () => {
   const h = harness();
-  const RS = requireRS(h, '下一步链接');
+  const RS = await instanceOf(h);
   const failed = RS.cardModel({ run: { status: 'failed', reason: 'upstream_error' } });
   assert.equal(failed.badge, '失败');
   assert.ok(failed.nextStep && failed.nextStep.label, '失败必须给出下一步');
@@ -438,9 +477,9 @@ test('任务卡：失败/中断给出可执行的下一步；未知状态不臆�
 
 // ---------- 保存三态 ----------
 
-test('保存状态独立三分：本地未保存 / 已应用未落盘 / 已保存', () => {
+test('保存状态独立三分：本地未保存 / 已应用未落盘 / 已保存', async () => {
   const h = harness();
-  const RS = requireRS(h, '保存三态');
+  const RS = await instanceOf(h);
   assert.equal(RS.saveBadge({ dirty: true }), '本地未保存');
   assert.equal(RS.saveBadge({ dirty: false }), '已保存');
   // S1 的 503 PERSISTENCE_PENDING：已应用未落盘（业务已应用到内存，磁盘没写上）
@@ -466,17 +505,18 @@ test('写作页保存徽标走真实链路：503 PERSISTENCE_PENDING 之后显�
       return { body: {} };
     },
   });
-  requireRS(h, '保存徽标渲染');
-  assert.ok(h.bookPage.renderWritingStatus, 'book.js 必须提供 renderWritingStatus');
+  const RS = await instanceOf(h);
+  assert.equal(typeof h.bookPage.hasUnsavedChanges, 'function', '编辑部必须提供 hasUnsavedChanges（等值 book.js:81 消费面）');
+  RS.observeApi();
 
   // 干净且服务端健康 → 已保存
   h.page.dirty = false;
-  h.bookPage.renderWritingStatus();
+  RS.renderWritingSaveBadge();
   assert.equal(h.text('writing-status-save'), '已保存');
 
   // 本地有改动 → 本地未保存
   h.page.dirty = true;
-  h.bookPage.renderWritingStatus();
+  RS.renderWritingSaveBadge();
   assert.equal(h.text('writing-status-save'), '本地未保存');
 
   // 保存打到 503 PERSISTENCE_PENDING：业务已应用、未落盘 → 已应用未落盘
@@ -485,202 +525,32 @@ test('写作页保存徽标走真实链路：503 PERSISTENCE_PENDING 之后显�
     h.App.api('PUT', '/api/books/7/chapters/41', { content: '正文' }),
     e => e.code === 'PERSISTENCE_PENDING',
   );
-  h.bookPage.renderWritingStatus();
+  RS.renderWritingSaveBadge();
   const saveBadgeDuringDiskFailure = h.text('writing-status-save');
   assert.equal(saveBadgeDuringDiskFailure, '已应用未落盘');
 
   // 落盘失败期间编辑器又出现新输入：徽标仍是「已应用未落盘」（磁盘还落后，不谎称已保存）
   h.page.dirty = true;
-  h.bookPage.renderWritingStatus();
+  RS.renderWritingSaveBadge();
   assert.equal(h.text('writing-status-save'), '已应用未落盘', '磁盘未恢复前不得谎称已保存');
 
   // 磁盘恢复（/api/health 报 clean）后，任务完成/保存成功都不等于当前新输入已保存：
   // 编辑器还为脏 → 本地未保存
   h.App.__runStatusObserved;
-  h.RS.notePersistence({ dirty: false, retryScheduled: false, lastSaveError: null, durable: true });
+  RS.notePersistence({ dirty: false, retryScheduled: false, lastSaveError: null, durable: true });
   h.page.dirty = true;
-  h.bookPage.renderWritingStatus();
+  RS.renderWritingSaveBadge();
   assert.equal(h.text('writing-status-save'), '本地未保存', '写入成功后的新输入仍必须显示未保存');
   h.page.dirty = false;
-  h.bookPage.renderWritingStatus();
+  RS.renderWritingSaveBadge();
   assert.equal(h.text('writing-status-save'), '已保存');
-});
-
-test('保存徽标只认「落盘失败」：/api/health 的排队计时器不算失败；磁盘恢复后不敲键盘也回到「已保存」', async () => {
-  // 同名键在两条契约里含义不同：S1 的 persistence 信封（durable/pending/code）里
-  // pending=true 就是「saveNow 试过、没写下去」；/api/health 走 db.getPersistenceStatus()，
-  // 其中 pending 只是 1s debounce 计时器排着队、dirty 只表示内存里还有改动。
-  // 徽标必须按「失败事实」亮（lastSaveError/retryScheduled/exhausted 或 durable=false），
-  // 否则每次正常保存的 1s 窗口都会被误报成「已应用未落盘」。
-  let phase = 'queued';   // queued：正常但有 debounce 排队；failing：写盘失败；clean：落盘已成功
-  const h = harness({
-    state: { currentBook: { id: 7, title: '雾港编年史' }, currentChapterId: 41 },
-    route(req) {
-      if (req.url.indexOf('/api/health') === 0) {
-        const persistence = phase === 'failing'
-          ? { dirty: true, pending: false, retryScheduled: true, exhausted: false, lastSaveError: 'EACCES: permission denied' }
-          : (phase === 'queued'
-            ? { dirty: true, pending: true, retryScheduled: false, exhausted: false, lastSaveError: '' }
-            : { dirty: false, pending: false, retryScheduled: false, exhausted: false, lastSaveError: '' });
-        return { body: { ok: true, persistence } };
-      }
-      if (req.method === 'POST' && req.url.indexOf('/api/persistence/flush') === 0) {
-        return { body: { ok: true, applied: true, persistence: { durable: true, pending: false, code: null } } };
-      }
-      if (req.method === 'PUT' && req.url.indexOf('/chapters/41') > 0) {
-        return { status: 503, body: { error: '写入磁盘仍失败', code: 'PERSISTENCE_PENDING', applied: true, persistence: { durable: false, pending: true, code: 'PERSISTENCE_PENDING' } } };
-      }
-      return { body: {} };
-    },
-  });
-  const RS = requireRS(h, '保存徽标只认落盘失败');
-  h.page.dirty = false;
-
-  // ① 磁盘正常，只是还有一次落盘排在 debounce 队列里（health: dirty/pending=true，无错误）
-  await h.bookPage.refreshRunStatus();
-  h.bookPage.renderWritingStatus();
-  assert.equal(h.text('writing-status-save'), '已保存', '排队的 debounce 不算落盘失败，不得误报「已应用未落盘」');
-
-  // ② 真的写不下去（503 PERSISTENCE_PENDING）→ 已应用未落盘
-  phase = 'failing';
-  await assert.rejects(
-    h.App.api('PUT', '/api/books/7/chapters/41', { content: '正文' }),
-    e => e.code === 'PERSISTENCE_PENDING',
-  );
-  h.bookPage.renderWritingStatus();
-  assert.equal(h.text('writing-status-save'), '已应用未落盘');
-
-  // ③ 磁盘恢复（S1 的 flush 成功 + health 不再报错）→ 页面自身的状态刷新就该把徽标带回去，
-  //    不必等作者再敲一次键（否则「已应用未落盘」会一直挂着骗人）
-  phase = 'clean';
-  await h.RS.retryFlush();
-  await h.bookPage.refreshRunStatus();
-  assert.equal(h.text('writing-status-save'), '已保存', '落盘恢复后即使没有新输入也应回到「已保存」');
-});
-
-// ---------- 资料更新 ----------
-
-test('另一空间改了当前资料：只提示「资料更新」并给查看差异/刷新；脏正文不被覆盖、聊天历史不自动加入', async () => {
-  let revision = 3;
-  const h = harness({
-    state: { currentBook: { id: 7, title: '雾港编年史' }, currentChapterId: 41 },
-    route(req) {
-      if (req.url.indexOf('/api/resources?type=chapter') === 0) {
-        return {
-          body: {
-            type: 'chapter', bookId: 7,
-            resource: {
-              type: 'chapter', id: 41, bookId: 7, found: true, title: '第 41 章', status: 'draft',
-              route: '#/book/7/read/41', updatedAt: '2026-09-23T00:00:00.000Z',
-              meta: { revision, locked: false, charCount: 1200 },
-            },
-          },
-        };
-      }
-      if (req.url.indexOf('/api/health') === 0) {
-        return { body: { ok: true, persistence: { dirty: false, retryScheduled: false, lastSaveError: null } } };
-      }
-      if (req.url.indexOf('/api/books/7/chat') === 0) return { body: { conversationId: 'w-7-a', messages: [] } };
-      return { body: {} };
-    },
-  });
-  const RS = requireRS(h, '资料更新提示');
-  assert.ok(typeof h.bookPage.refreshRunStatus === 'function', '写作页必须提供按需/可见时刷新的状态入口');
-
-  // 第一次：建立基线，无提示
-  await h.bookPage.refreshRunStatus();
-  assert.equal(h.text('writing-run-card').indexOf('资料更新'), -1, '基线读取不得误报资料更新');
-
-  // 另一空间（Agent 台/阅读页）改了同一章：revision 3 → 4
-  const unsavedLocalText = '编辑器里的未保存草稿：主角推开门，风灌进来。';
-  h.node('chapter-content').value = unsavedLocalText;
-  h.page.dirty = true;
-  revision = 4;
-  const messagesBefore = h.node('chat-messages').children.length;
-  await h.bookPage.refreshRunStatus();
-
-  const notice = h.text('writing-run-card');
-  assert.ok(notice.indexOf('资料更新') >= 0, '另一空间改了当前资料必须提示「资料更新」：' + notice);
-  assert.ok(notice.indexOf('查看差异') >= 0 && notice.indexOf('刷新') >= 0, '必须提供查看差异/刷新两个动作：' + notice);
-  const editorTextAfterResourceChanged = h.node('chapter-content').value;
-  assert.equal(editorTextAfterResourceChanged, unsavedLocalText, '脏正文不得被自动覆盖');
-  assert.equal(h.node('chat-messages').children.length, messagesBefore, '聊天历史不得自动加入资料变更消息');
-  assert.equal(h.page.reloads.length, 0, '脏正文时不得静默重载');
-  assert.equal(h.requests.some(r => r.method === 'POST' || r.method === 'PUT' || r.method === 'PATCH'), false,
-    '资料更新提示本身不得发写请求');
-
-  // 作者点「刷新」：脏正文仍在，不覆盖，只给明确提示
-  h.clickText('刷新');
-  await tick();
-  assert.equal(h.node('chapter-content').value, unsavedLocalText, '点刷新也不得覆盖未保存的稿子');
-  assert.equal(h.page.reloads.length, 0);
-  assert.ok(h.toasts.some(t => t.indexOf('未保存') >= 0), '必须提示先保存/复制再来刷新：' + h.toasts.join(' | '));
-  assert.equal(RS.observeResource('writing_resource:7:41', { meta: { revision: 4 } }).changed, false,
-    '同版本重复观察不得重复报警');
-
-  // 干净时点「刷新」才真正重新加载该章（从服务端取真相）
-  h.page.dirty = false;
-  h.clickText('刷新');
-  await tick();
-  assert.deepEqual(h.page.reloads, [41], '干净编辑器下刷新应重新加载当前章');
 });
 
 // ---------- 刷新后从服务端重建 ----------
 
-test('刷新后从服务端 run 快照重建任务卡（不靠浏览器上一条气泡）；待确认卡与当前会话绑定', async () => {
-  const messages = [
-    { id: 1, role: 'user', content: '把这一章补完', source: 'writing', run: null },
-    { id: 2, role: 'assistant', content: '（半截）', source: 'writing', run: { status: 'paused', reason: 'output_truncated' } },
-  ];
-  const h = harness({
-    state: { currentBook: { id: 7, title: '雾港编年史' }, currentChapterId: 41 },
-    route(req) {
-      if (req.url.indexOf('/api/books/7/chat') === 0 && req.url.indexOf('/chat/actions') < 0) {
-        return { body: { conversationId: 'w-7-a', messages } };
-      }
-      if (req.url.indexOf('/chat/actions') > 0) {
-        return {
-          body: {
-            actions: [
-              { id: 'a-1', name: 'append_chapter', args: { chapterId: 41 }, summary: '写入第 41 章', status: 'pending', conversationId: 'w-7-a' },
-              { id: 'a-2', name: 'replace_chapter', args: { chapterId: 42 }, summary: '覆盖第 42 章', status: 'pending', conversationId: 'w-7-other' },
-            ],
-            expiredUnnotified: [],
-          },
-        };
-      }
-      if (req.url.indexOf('/api/health') === 0) {
-        return { body: { ok: true, persistence: { dirty: false, retryScheduled: false, lastSaveError: null } } };
-      }
-      return { body: {} };
-    },
-  });
-  const RS = requireRS(h, '服务端重建');
-  await h.bookPage.loadChat();
-
-  const badge = h.node('writing-run-card').querySelector('.run-badge');
-  assert.ok(badge, '任务卡必须渲染徽标元素');
-  assert.equal(badge.textContent, '已暂停', '刷新后必须按服务端 run 快照显示「已暂停」（length 截断）：' + h.text('writing-run-card'));
-
-  const bound = RS.actionsForConversation([
-    { id: 'a-1', conversationId: 'w-7-a', summary: '写入第 41 章' },
-    { id: 'a-2', conversationId: 'w-7-other', summary: '覆盖第 42 章' },
-  ], 'w-7-a');
-  assert.equal(bound.bound.map(a => a.id).join(','), 'a-1');
-  assert.equal(bound.unbound.map(a => a.id).join(','), 'a-2');
-  const model = RS.cardModel({ run: { status: 'awaiting_confirmation' }, actions: bound.bound.concat(bound.unbound), conversationId: 'w-7-a' });
-  assert.equal(model.pendingActions.map(a => a.id).join(','), 'a-1', '待确认卡只属于当前会话');
-  RS.mountTaskCard('writing-run-card', model);
-  const confirmText = h.text('writing-run-card');
-  assert.ok(confirmText.indexOf('写入第 41 章') >= 0);
-  assert.equal(confirmText.indexOf('覆盖第 42 章') >= 0, false, '其他会话的待确认卡不得显示为当前会话的');
-
-  assert.deepEqual(h.missingIds(), [], '页面代码不得请求 index.html 里不存在的 id');
-});
-
 test('网络中断只显示「未知（待恢复）」：不臆造失败也不臆造完成', async () => {
   const h = harness();
-  const RS = requireRS(h, '网络中断');
+  const RS = await instanceOf(h);
   const failing = async () => { throw new TypeError('fetch failed'); };
   const card = await RS.rebuildFromServer({ runId: 'run_x', sessionKey: 'writing:book:7', fetchImpl: failing });
   assert.equal(card.ok, false);
@@ -702,7 +572,7 @@ test('网络中断只显示「未知（待恢复）」：不臆造失败也不�
 
 test('状态查询低频、页面可见才轮询、完成后停止（不新增每秒全库扫描）', async () => {
   const h = harness();
-  const RS = requireRS(h, '状态轮询');
+  const RS = await instanceOf(h);
   const fast = RS.createWatcher({ intervalMs: 1000, load: async () => ({ terminal: false }) });
   assert.ok(fast.intervalMs >= RS.MIN_INTERVAL_MS, '轮询间隔必须被抬到低频下限，不接受秒级全库扫描');
   assert.ok(RS.MIN_INTERVAL_MS >= 2000, '低频下限至少 2 秒');
@@ -729,14 +599,24 @@ test('状态查询低频、页面可见才轮询、完成后停止（不新增�
   assert.equal(loads, 2, '停止后不得再发起状态查询');
   w.stop();
 
-  assert.ok(typeof h.bookPage.setStatusPollingVisible === 'function', '写作页必须提供可见性开关');
+  // P6-2 ⑨ 原位改钉：book-chat.js 早退役、聊天委托桩段（P6-2 ⑨ 前 index.html 内联段）亦随本片清退 ⇒
+  // 可见性开关的供给方＝聊天模块面（ChatWorkspace 命令面 `setStatusPollingVisible`），index.html 零内联段。
+  const html = indexHtml();
+  assert.equal((html.match(/legacy\/book-chat\.js/g) || []).length, 0, 'index.html 不得再加载 book-chat.js');
+  assert.equal((html.match(/<script\b/g) || []).length, 1, '源 index.html 只余一个 script＝Vite entry 声明 /entry.jsx（P6-2 ⑨ 内联段清零＋P6-3 产物化）');
+  assert.equal(html.indexOf('setStatusPollingVisible'), -1, 'index.html 不得再内联供给可见性开关');
+  assert.ok(
+    /setStatusPollingVisible: \(on\) => controller\.setStatusPollingVisible\(on\)/.test(
+      readFe('frontend/components/ChatWorkspace.jsx'),
+    ),
+    '可见性开关必须由聊天模块面供给（等值原 :2108-2116 的对外面）',
+  );
 });
 
 // ---------- 统一错误可见（G3 已知边界 4 的前端一半）----------
 
 test('工具被拒绝时错误码可达前端：tool-output-error 携带 TOOL_NOT_ALLOWED 而不是通用文案', async () => {
-  const h = harness();
-  const hub = h.hub;
+  const hub = await import(dataUrl(fs.readFileSync(path.join(root, 'frontend/lib/chat-event-hub.js'), 'utf8')));
   const sse = [
     'data: ' + JSON.stringify({ type: 'tool-input-available', toolCallId: 't1', toolName: 'create_character', input: { name: '甲' } }) + '\n\n',
     'data: ' + JSON.stringify({ type: 'tool-output-error', toolCallId: 't1', errorText: '[TOOL_NOT_ALLOWED] 工具 "create_character" 不在当前工具面（只读讨论模式不加载写工具，未执行任何写入）' }) + '\n\n',
@@ -753,52 +633,23 @@ test('工具被拒绝时错误码可达前端：tool-output-error 携带 TOOL_NO
   assert.equal(out.toolErrors[0].code, 'TOOL_NOT_ALLOWED');
 });
 
-test('写作页压缩弹窗说明四节结构（S3-04 摘要结构，G3 已知边界 9）', () => {
-  const h = harness({ state: { currentBook: { id: 7, title: '雾港编年史' }, currentChapterId: 41 } });
-  assert.ok(typeof h.bookPage.bindChatEvents === 'function');
-  h.bookPage.bindChatEvents();
-  h.fire('btn-compress', 'click');
-  assert.equal(h.modals.length, 1, '压缩按钮必须打开弹窗');
-  const body = h.modals[0].bodyHTML;
-  for (const section of ['已确认的资料与设定', '已执行的动作与结果', '未决问题', '尚未采纳的设想']) {
-    assert.ok(body.indexOf(section) >= 0, '压缩弹窗必须说明四节摘要结构，缺：' + section + '（文案：' + body + '）');
-  }
-});
+// ---------- S5-7-X2 等价承接（P6-4）：健康快照映射 ----------
 
-// ---------- 工作台任务入口 ----------
-
-test('工作台显示当前书的任务入口（服务端运行状态 + 下一步链接）', async () => {
-  const h = harness({
-    route(req) {
-      if (req.url.indexOf('/api/books/7') === 0) return { body: { book: { id: 7, title: '雾港编年史' } } };
-      if (req.url.indexOf('/api/resources?type=task') === 0) {
-        return {
-          body: {
-            type: 'task', bookId: 7,
-            items: [{ type: 'task', id: 'run_9', title: 'chat · write', bookId: 7, status: 'paused', route: '#/agent', updatedAt: '2026-09-23T00:00:00.000Z', meta: { entry: 'chat', mode: 'write' } }],
-            nextCursor: null,
-          },
-        };
-      }
-      return { body: {} };
-    },
-  });
-  requireRS(h, '工作台任务入口');
-  await h.workbench.show('#/book/7/workbench/ledger');
-  // Toast + 铃铛形态：状态徽标落在铃铛弹层标题（#workbench-task-entry 已退役为 notify 组件）
-  const title = h.text('workbench-notify-title');
-  assert.ok(title, '铃铛弹层标题必须渲染');
-  assert.ok(title.indexOf('已暂停') >= 0, '工作台必须显示服务端运行状态徽标：' + title);
-  const link = h.node('workbench-notify-link');
-  assert.ok(link, '铃铛弹层必须有下一步链接');
-  assert.equal(link.href, '#/agent', '下一步入口指向任务自带的 route：' + link.href);
-  assert.ok(!link.classList.contains('hidden'), '有运行记录时下一步链接必须可见');
-
-  // 服务端查不到任务时明确说明，不臆造完成
-  const h2 = harness({ route: req => (req.url.indexOf('/api/books/7') === 0 ? { body: { book: { id: 7, title: '雾港编年史' } } } : { body: { type: 'task', bookId: 7, items: [], nextCursor: null } }) });
-  await h2.workbench.show('#/book/7/workbench/ledger');
-  const t2 = h2.text('workbench-notify-title');
-  assert.ok(t2.indexOf('没有') >= 0, '没有运行记录时必须明说，不得显示为完成：' + t2);
-  const link2 = h2.node('workbench-notify-link');
-  assert.ok(link2.classList.contains('hidden'), '没有运行记录时下一步链接必须隐藏');
+test('健康快照映射：/api/health 的 dirty/pending 是 debounce 队列不算失败，lastSaveError/retryScheduled 才算（S5-7-X2② 等价承接；lib run-status.js:111-136）', async () => {
+  const h = harness();
+  const RS = await instanceOf(h);
+  h.page.dirty = false;
+  // 健康快照形（无 durable 字段）：db 层 debounce 队列的 dirty/pending=true ≠ 落盘失败
+  //（legacy run-status.js:88-93 语义；db.js 自称「谎报 pending」，实现注释 run-status.js:123-131 逐字）
+  RS.notePersistence({ dirty: true, pending: true, retryScheduled: false, lastSaveError: null });
+  RS.renderWritingSaveBadge();
+  assert.equal(h.text('writing-status-save'), '已保存', '健康快照 dirty/pending 是 debounce 队列，不得显示「已应用未落盘」');
+  // 对照组①：lastSaveError＝失败事实 → 已应用未落盘
+  RS.notePersistence({ dirty: false, pending: false, retryScheduled: false, lastSaveError: 'EACCES: permission denied' });
+  RS.renderWritingSaveBadge();
+  assert.equal(h.text('writing-status-save'), '已应用未落盘');
+  // 对照组②：retryScheduled＝已安排重试（失败事实）→ 已应用未落盘
+  RS.notePersistence({ dirty: false, pending: false, retryScheduled: true, lastSaveError: null });
+  RS.renderWritingSaveBadge();
+  assert.equal(h.text('writing-status-save'), '已应用未落盘');
 });

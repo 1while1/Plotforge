@@ -1,16 +1,34 @@
 // 改写收益曲线（人改比例 → 检测分）回归：钉住比例口径、曲线几何与草稿持久化。
+//
+// S5-10 转写（Plan §5.3；charter §2 豁免流程）：装载源由 `require('../public/legacy/rewrite-curve')`
+// 改为 data-URL import `frontend/lib/rewrite-curve.js`（S4-8 逐字移植件），14 例标题与断言逐字保留。
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const RC = require('../public/rewrite-curve');
+const fs = require('node:fs');
+const path = require('node:path');
 
-test('changed 判定：只去空白不算人改，字数或内容变了才算', () => {
+const LIB = path.join(__dirname, '..', 'frontend/lib/rewrite-curve.js');
+
+function dataUrl(src) {
+  return 'data:text/javascript;base64,' + Buffer.from(src, 'utf8').toString('base64');
+}
+
+let modPromise = null;
+function loadRC() {
+  if (!modPromise) modPromise = import(dataUrl(fs.readFileSync(LIB, 'utf8')));
+  return modPromise;
+}
+
+test('changed 判定：只去空白不算人改，字数或内容变了才算', async () => {
+  const RC = await loadRC();
   assert.equal(RC.createItem('他走进屋子。', '他走进屋子。').changed, false);
   assert.equal(RC.createItem('他走进屋子。', '他走进屋子。 ').changed, false, '尾部空格不算改动');
   assert.equal(RC.createItem('他走进屋子。', '他推门进屋。').changed, true);
   assert.equal(RC.createItem('他走进屋子。', '他进屋，目光扫过角落。').changed, true);
 });
 
-test('汇总按字数为准，同时给出段数口径', () => {
+test('汇总按字数为准，同时给出段数口径', async () => {
+  const RC = await loadRC();
   const items = RC.normalizeItems(['一二三四五', '六七八九十', '甲乙丙丁戊己庚辛']);
   items[0].rewritten = '一二三四五六七八九十一二';
   items[0].changed = true;
@@ -23,14 +41,16 @@ test('汇总按字数为准，同时给出段数口径', () => {
   assert.equal(s.ratioByCount, Math.round((1 / 3) * 1000) / 1000);
 });
 
-test('拼回全文：已改用改写稿、未改用原文、空段丢弃', () => {
+test('拼回全文：已改用改写稿、未改用原文、空段丢弃', async () => {
+  const RC = await loadRC();
   const items = RC.normalizeItems(['甲', '乙', '']);
   items[1].rewritten = '乙改';
   items[1].changed = true;
   assert.equal(RC.assemble(items), '甲\n\n乙改');
 });
 
-test('测量点：连续重复（同比例同分数）只记次数，不刷屏', () => {
+test('测量点：连续重复（同比例同分数）只记次数，不刷屏', async () => {
+  const RC = await loadRC();
   let series = [];
   series = RC.addPoint(series, { ratio: 0.25, conf: 0.9999, chars: 3000, at: 't1' });
   series = RC.addPoint(series, { ratio: 0.25, conf: 0.9999, chars: 3000, at: 't2' });
@@ -41,19 +61,22 @@ test('测量点：连续重复（同比例同分数）只记次数，不刷屏',
   assert.equal(series.length, 2, '比例变了就新起一点');
 });
 
-test('测量点：比例按 1% 粒度归并，分数保留 4 位', () => {
+test('测量点：比例按 1% 粒度归并，分数保留 4 位', async () => {
+  const RC = await loadRC();
   const s = RC.addPoint([], { ratio: 0.2549, conf: 0.611111, chars: 10 });
   assert.equal(s[0].ratio, 0.25);
   assert.equal(s[0].conf, 0.6111);
 });
 
-test('测量点：无分数的点也允许记录（上游失败时留痕）', () => {
+test('测量点：无分数的点也允许记录（上游失败时留痕）', async () => {
+  const RC = await loadRC();
   const s = RC.addPoint([], { ratio: 0, conf: null });
   assert.equal(s[0].conf, null);
   assert.equal(s[0].n, 1);
 });
 
-test('曲线坐标：落在 padding 之内，越界被夹住，无分数的点被丢弃', () => {
+test('曲线坐标：落在 padding 之内，越界被夹住，无分数的点被丢弃', async () => {
+  const RC = await loadRC();
   const pts = RC.plotPoints([
     { ratio: 0, conf: 0 }, { ratio: 1, conf: 1 }, { ratio: 1.4, conf: -0.2 }, { ratio: 0.5, conf: null },
   ], { width: 320, height: 160 });
@@ -64,7 +87,8 @@ test('曲线坐标：落在 padding 之内，越界被夹住，无分数的点�
   assert.ok(pts[0].label.includes('很像人写的'));
 });
 
-test('seriesPath 生成合法 SVG path', () => {
+test('seriesPath 生成合法 SVG path', async () => {
+  const RC = await loadRC();
   const pts = RC.plotPoints([{ ratio: 0, conf: 0.1 }, { ratio: 0.5, conf: 0.4 }]);
   const d = RC.seriesPath(pts);
   assert.ok(d.startsWith('M'));
@@ -72,7 +96,8 @@ test('seriesPath 生成合法 SVG path', () => {
   assert.equal(RC.seriesPath([]), '');
 });
 
-test('进度文案：未改 / 已改两种口径都读得出来', () => {
+test('进度文案：未改 / 已改两种口径都读得出来', async () => {
+  const RC = await loadRC();
   assert.equal(RC.describeProgress(RC.summarize([])), '还没有载入段落');
   const empty = RC.normalizeItems(['甲', '乙']);
   assert.ok(RC.describeProgress(RC.summarize(empty)).includes('尚未改写'));
@@ -82,7 +107,8 @@ test('进度文案：未改 / 已改两种口径都读得出来', () => {
   assert.ok(txt.includes('占'));
 });
 
-test('分档与 style-health 的展示分档同序（0.2/0.5/0.7/0.9）', () => {
+test('分档与 style-health 的展示分档同序（0.2/0.5/0.7/0.9）', async () => {
+  const RC = await loadRC();
   assert.equal(RC.bandOf(0.1).label, '很像人写的');
   assert.equal(RC.bandOf(0.3).label, '偏人工');
   assert.equal(RC.bandOf(0.6).label, '疑似 AI');
@@ -102,7 +128,8 @@ function fakeStorage(initial) {
   };
 }
 
-test('草稿存留：按书+章取键，刷新（重建 store）后改写与曲线都在', () => {
+test('草稿存留：按书+章取键，刷新（重建 store）后改写与曲线都在', async () => {
+  const RC = await loadRC();
   const storage = fakeStorage();
   const store = RC.createDraftStore({ storage });
   const items = RC.normalizeItems(['甲', '乙']);
@@ -122,7 +149,8 @@ test('草稿存留：按书+章取键，刷新（重建 store）后改写与曲�
   assert.equal(reloaded.load(8, 3), null, '别的书没有草稿');
 });
 
-test('草稿可清除；清掉后读回 null', () => {
+test('草稿可清除；清掉后读回 null', async () => {
+  const RC = await loadRC();
   const storage = fakeStorage();
   const store = RC.createDraftStore({ storage });
   store.save(1, 1, { items: RC.normalizeItems(['甲']), series: [] });
@@ -131,7 +159,8 @@ test('草稿可清除；清掉后读回 null', () => {
   assert.equal(store.load(1, 1), null);
 });
 
-test('坏数据/无存储/存储抛错一律退化为「没有草稿」，不炸', () => {
+test('坏数据/无存储/存储抛错一律退化为「没有草稿」，不炸', async () => {
+  const RC = await loadRC();
   const broken = RC.createDraftStore({ storage: fakeStorage({ 'novel-rewrite:1:1': '{不是 JSON' }) });
   assert.equal(broken.load(1, 1), null);
   const wrongShape = RC.createDraftStore({ storage: fakeStorage({ 'novel-rewrite:1:1': '{"items":"x"}' }) });
@@ -147,7 +176,8 @@ test('坏数据/无存储/存储抛错一律退化为「没有草稿」，不炸
   assert.doesNotThrow(() => throwing.clear(1, 1));
 });
 
-test('无效 id 不写不炸', () => {
+test('无效 id 不写不炸', async () => {
+  const RC = await loadRC();
   const store = RC.createDraftStore({ storage: fakeStorage() });
   assert.equal(store.load(null, 1), null);
   assert.equal(store.save(1, undefined, { items: [], series: [] }), false);

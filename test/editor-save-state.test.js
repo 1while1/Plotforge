@@ -131,3 +131,41 @@ test('成功响应携带 persistence.durable=false：同样不标干净', async 
   assert.equal(await f.BookPage.saveChapter(true), true, 'HTTP 200 路径按成功返回');
   assert.equal(f.dirty(), true, 'durable=false 不满足标干净三条件');
 });
+
+// 保存单飞竞态（S2-1 整改轮 1，charter_amended #3）：真实渠道巡检「延迟网络」反例的
+// 确定性复刻——手动保存飞行（含 PUT 后 loadChapters 尾巴）尚未结束时，3s 防抖自动保存
+// 调用 saveChapter 撞上单飞被合并进旧飞行；旧实现直接 return 旧 Promise，飞行中的新输入
+// 既没随本笔落库，也没有任何后续保存（无新 input 则防抖不再触发）→ 新输入滞留脏态。
+test('保存单飞竞态：飞行中的新保存调用在飞行结束后必须补发（不得被单飞吞掉）', async () => {
+  const f = editorFixture();
+  await openChapterAtRev1(f);
+  const puts = [];
+  let resolvePut1;
+  f.App.api = async (method, route, body) => {
+    if (method === 'PUT') {
+      puts.push(body);
+      if (puts.length === 1) return new Promise(resolve => { resolvePut1 = resolve; }); // 第 1 笔挂起（模拟延迟网络）
+      return { chapter: { id: 1, revision: 3 }, persistence: { durable: true } };
+    }
+    return { chapter: { id: 1, revision: 2 } }; // loadChapters 等读桩
+  };
+  // ① 保存中输入「快照A」并点保存（PUT 1 在途，飞行未结束）
+  f.node('chapter-content').value = '快照A';
+  f.node('chapter-content').listeners.input();
+  const manual = f.BookPage.saveChapter();
+  // ② 保存中继续输入「快照A+新输入」；3s 后 autoSaveNow → saveChapter(true) 撞单飞
+  f.node('chapter-content').value = '快照A+新输入';
+  f.node('chapter-content').listeners.input();
+  const auto = f.BookPage.saveChapter(true);
+  // ③ 第 1 笔响应到达（快照只含提交时刻内容）
+  resolvePut1({ chapter: { id: 1, revision: 2 }, persistence: { durable: true } });
+  assert.equal(await manual, true, '第 1 笔本身保存成功');
+  assert.equal(puts[0].content, '快照A', '第 1 笔只落提交时快照（既有语义：在途保存不携带保存期间的新输入）');
+  // ④ 修复语义：撞单飞的调用返回 true，且飞行结束后补发一笔携带最新输入的保存
+  assert.equal(await auto, true, '撞单飞的自动保存调用按成功返回（对外语义不变）');
+  assert.equal(puts.length >= 2, true, `飞行结束后必须补发保存（旧实现被单飞吞掉，实际 PUT 数=${puts.length}）`);
+  assert.equal(puts[1].content, '快照A+新输入', '补发笔携带飞行期间的新输入');
+  assert.equal(puts[1].expected_revision, 2, '补发笔以第 1 笔响应的新 revision 为基准');
+  assert.equal(f.dirty(), false, '补发落库后标干净');
+});
+

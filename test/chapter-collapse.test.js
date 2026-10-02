@@ -5,7 +5,7 @@
 // 本测试钉住 store 的语义（含按书隔离与原型键陷阱）。
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createStore } = require('../public/chapter-collapse');
+const { createStore } = require('../public/legacy/chapter-collapse');
 
 test('折叠状态可设置/读取/取消，并支持切换', () => {
   const store = createStore();

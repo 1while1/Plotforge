@@ -43,9 +43,9 @@ function editorFixture() {
     console, setTimeout: () => 1, clearTimeout() {}, confirm: () => true,
     navigator: {}, location: { hash: '' },
   };
-  vm.runInNewContext(fs.readFileSync(path.join(root, 'public/chapter-collapse.js'), 'utf8'), context);
-  vm.runInNewContext(fs.readFileSync(path.join(root, 'public/chapter-conflict.js'), 'utf8'), context);
-  vm.runInNewContext(fs.readFileSync(path.join(root, 'public/book-chapters.js'), 'utf8'), context);
+  vm.runInNewContext(fs.readFileSync(path.join(root, 'public/legacy/chapter-collapse.js'), 'utf8'), context);
+  vm.runInNewContext(fs.readFileSync(path.join(root, 'public/legacy/chapter-conflict.js'), 'utf8'), context);
+  vm.runInNewContext(fs.readFileSync(path.join(root, 'public/legacy/book-chapters.js'), 'utf8'), context);
   win.BookPage.loadChapters = async () => {};
   win.BookPage.bindChapterEvents(); // input 脏检查监听在编辑器/标题/节拍框上，随事件绑定
   return {

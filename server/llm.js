@@ -50,7 +50,7 @@ const { THINKING_OFF_FIELD, THINKING_OFF_SETTING, thinkingDisabledModel, applyTh
 
 // ---------------- 韧性网关（重试 + 超时 + 退避） ----------------
 // 对齐 pi：在 provider 层统一兜底传输抖动，所有 LLM 调用方（写作/润色/咨询/advisor/提案/压缩）共享。
-const RETRY_MAX_ATTEMPTS = 3;          // 总尝试次数（含首次）
+const RETRY_MAX_ATTEMPTS = 5;          // 总尝试次数（含首次）；2026-09-30 委托方指令 3→5（扛渠道抖动）
 const RETRY_BASE_DELAY_MS = 500;       // 退避基准
 const RETRY_MAX_DELAY_MS = 8000;       // 退避上限
 // M1（对齐 pi provider-retry.ts:1 的 maxRetryDelayMs=60s）：服务端经 retry-after 明示的等待超过 60s
@@ -61,11 +61,12 @@ const REQUEST_TIMEOUT_MS = 120000;     // 请求超时：覆盖到「响应头�
 // A16（第二轮重审查）：流式请求的响应头必须很快到达（服务端只发 ack 不生成内容），
 // 120s 的通用超时对流式首字节毫无意义。曾收紧到 20s，但会误杀推理模型
 //（agnes-2.5-flash/deepseek-reasoner）的长思考期——首字节前模型在推理、不发任何数据。
-// 委托方明确取舍（2026-09-09）：首字节放宽到 3 分钟，宁可等也不误杀慢思考；
-// 代价是「上游完全无响应」的死连接最坏静默 ≈ 3×180s + 退避 ≈ 9 分钟（界面可手动停止）。
+// 取舍史：2026-09-09 放宽到 3 分钟（宁可等也不误杀慢思考）；2026-09-30 委托方指令放宽到 6 分钟；
+// 代价是「上游完全无响应」的死连接最坏静默 ≈ 5×360s + 退避 ≈ 30 分钟（界面可手动停止）。
 // 非流式 REQUEST_TIMEOUT_MS=120s 不动（非流式响应头到达即生成完成，收紧会杀掉慢生成）。
-const STREAM_FIRST_BYTE_TIMEOUT_MS = 180000;
-const STREAM_STALL_TIMEOUT_MS = 45000; // 流式静默超时：两个数据块之间的最大间隔，超时视为断流
+const STREAM_FIRST_BYTE_TIMEOUT_MS = 360000;
+// 2026-09-30 抗短连：信号差的模型流内静默间隙长，45s 误杀率高；配合首字节 360s 口径。
+const STREAM_STALL_TIMEOUT_MS = 90000; // 流式静默超时：两个数据块之间的最大间隔，超时视为断流
 
 // 配额/账单类错误模式（对齐 pi ai/src/utils/retry.ts:7-24 NON_RETRYABLE_PROVIDER_LIMIT_ERROR_PATTERN）：
 // 这类错误重试只会继续撞墙、白烧窗口时间，即便伴随 429/5xx 状态码也必须立即失败。
@@ -91,6 +92,7 @@ function isRetryableError(err) {
   if (isNonRetryableLimitError(err)) return false;   // 配额/账单类（含 429 quota）：永不重试
   if (err.__prematureStream) return true;            // 本模块标注的「过早断流」：传输类，可重试
   if (err.__timeout) return true;                    // 本模块超时触发的 abort：可重试
+  if (err.__transport) return true;                  // postChatJson 标注的「响应体下载中断」：传输类，可重试（2026-09-30 抗短连）
   const status = err.status;
   if (status) {
     if (status === 408 || status === 429) return true;
@@ -210,6 +212,58 @@ async function fetchChatCompletion({ baseUrl, apiKey, body, signal, timeoutMs = 
         throw e;
       }
       return res;
+    } catch (err) {
+      clearTimeout(timer);
+      if (signal) signal.removeEventListener('abort', onExternalAbort);
+      if (timedOut && err && typeof err === 'object') err.__timeout = true;
+      else if (signal && signal.aborted && err && typeof err === 'object') err.__userAbort = true;
+      throw err;
+    }
+  }, { retries: RETRY_MAX_ATTEMPTS - 1, baseDelay: RETRY_BASE_DELAY_MS, maxDelay: RETRY_MAX_DELAY_MS, signal });
+}
+
+// 非流式整体调用（2026-09-30 抗短连加固 A）：fetch 与 res.json() **整体**放进 withRetry 重试圈。
+// 旧形态的缺口：fetchChatCompletion 只包到「响应头到达」，调用方随后的 res.json() 在圈外——
+// 头 200 但响应体下载中断（TypeError: terminated / unexpected end of data 等）会直接炸穿调用方，
+// 且这次失败不享受任何重试。本函数：非 2xx 处理沿用 fetchChatCompletion 的 !res.ok 分支（读 text、
+// status、retryAfter、抛同款 Error）；res.json() 抛错（下载中断）打 e.__transport = true 再抛，
+// 由 isRetryableError 的 __transport 分支判可重试。台账语义不变：网关内重试不加行（每次逻辑调用一行）。
+async function postChatJson({ baseUrl, apiKey, body, signal, timeoutMs = REQUEST_TIMEOUT_MS }) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`; // 免费渠道（无 Key）不携带 Authorization 头
+  return withRetry(async () => {
+    const ac = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; const e = new Error('request timeout'); e.__timeout = true; ac.abort(e); }, timeoutMs);
+    // 外部 signal 全程桥接到内部 ac；透传 reason
+    const onExternalAbort = () => ac.abort(signal && signal.reason);
+    if (signal) {
+      if (signal.aborted) { clearTimeout(timer); const e = new Error('aborted by caller'); e.__userAbort = true; throw e; }
+      signal.addEventListener('abort', onExternalAbort);
+    }
+    try {
+      const res = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST', headers, body: JSON.stringify(applyThinkingMode(body)), signal: ac.signal,
+      });
+      clearTimeout(timer); // 响应头到达：清除超时
+      if (!res.ok) {
+        if (signal) signal.removeEventListener('abort', onExternalAbort);
+        const text = await res.text();
+        const e = new Error(`LLM 请求失败 ${res.status}: ${text.slice(0, 300)}`);
+        e.status = res.status;
+        const ra = parseRetryAfterHeader(res.headers);
+        if (ra != null) e.retryAfter = ra;
+        throw e;
+      }
+      // 响应体读取也在重试圈内：下载中断（通常 TypeError）标注 __transport（传输类，可重试）
+      let data;
+      try {
+        data = await res.json();
+      } catch (e) {
+        if (e && typeof e === 'object') e.__transport = true;
+        throw e;
+      }
+      return data;
     } catch (err) {
       clearTimeout(timer);
       if (signal) signal.removeEventListener('abort', onExternalAbort);
@@ -372,12 +426,12 @@ async function callLLMFull(messages, { maxTokens = 4000, temperature = 0.7, sign
   const t0 = Date.now();
   const logBase = { bookId: meta && meta.bookId, scope: (meta && meta.scope) || 'llm', model, baseUrl, outputReserve: maxTokens };
   try {
-    // 传输抖动/超时由 fetchChatCompletion 统一重试；空正文按 R02 空输出契约显式失败（不在这里重发）
-    const res = await fetchChatCompletion({
+    // 传输抖动/超时由 postChatJson 统一重试（2026-09-30 抗短连：res.json() 响应体读取一并入圈）；
+    // 空正文按 R02 空输出契约显式失败（不在这里重发）
+    const data = await postChatJson({
       baseUrl, apiKey, signal, timeoutMs: REQUEST_TIMEOUT_MS,
       body: { model, messages, max_tokens: maxTokens, temperature },
     });
-    const data = await res.json();
     const choice = (data.choices && data.choices[0]) || {};
     const msg = choice.message || {};
     const usage = data.usage || {};
@@ -778,6 +832,7 @@ module.exports = {
   resolveContextWindow, DEFAULT_CONTEXT_WINDOW, outputTokenBudget, systemPromptTokenBudget,
   // 韧性网关（供 chat.js 与测试复用）
   isRetryableError, isNonRetryableLimitError, computeBackoff, withRetry, fetchChatCompletion,
+  postChatJson, // A（抗短连 2026-09-30）：非流式 fetch+res.json() 整体重试（调用方：callLLMFull/续写链/followUp 后续轮）
   RETRY_MAX_ATTEMPTS, REQUEST_TIMEOUT_MS, STREAM_STALL_TIMEOUT_MS, STREAM_FIRST_BYTE_TIMEOUT_MS,
   // M1：对齐 pi AI 层的四点强化
   parseRetryAfterHeader, RETRY_AFTER_CEILING_MS,   // ④ retry-after 三形态解析 + >60s 上抛

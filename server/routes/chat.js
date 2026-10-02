@@ -3,6 +3,7 @@ const db = require('../db');
 const {
   buildChatMessages, callLLMFull, consult, trimHistoryText,
   fetchChatCompletion, readChatSSEStream, REQUEST_TIMEOUT_MS, STREAM_STALL_TIMEOUT_MS, STREAM_FIRST_BYTE_TIMEOUT_MS,
+  postChatJson, isRetryableError,
 } = require('../llm');
 const { sanitizeLeakedToolMarkup } = require('../utils/sanitize');
 const actionStore = require('../actionStore');
@@ -32,7 +33,14 @@ const TOOL_GUIDE = '\n【工具规则】人物更新必须使用稳定人物 ID�
   + bookTools.TOOL_GUIDE;
 
 // 长请求截断防护：写正文轮被 length 截断或网络提前结束时，回灌半截让模型无缝续写（最多 CONTINUATION_MAX 次）
-const CONTINUATION_MAX = 2;
+// 2026-09-30 抗短连加固：2→4——短连环境下「截断→续写」本身也吃轮次，2 次经常补不齐；
+// 且零进展轮（网络级失败的续写轮）不再占用该轮数预算，只扣下面的独立预算。
+const CONTINUATION_MAX = 4;
+// 2026-09-30 抗短连加固：续写「零进展预算」——零进展轮（本轮异常且无新增，或正常结束但
+// 零新增且仍截断）不计入 CONTINUATION_MAX，只扣本预算；**连续零进展超过 MAX**、非截断或
+// abort 才退出（预算内的零进展轮之后都还值得再试一次——「首两轮零进展、第三轮成功」正是
+// 要救的形态）。旧实现「续写轮零进展即 break」在短连环境下等于一次抖动就断尾丢弃全部续写机会。
+const CONTINUATION_ZERO_PROGRESS_MAX = 2;
 const CONTINUE_NUDGE = '（系统提示：上文因输出长度上限或连接中断被截断。请从截断处无缝续写，直接接着写正文——不要重复已写内容、不要重述前文、不要加标题或任何解释。）';
 
 const router = express.Router({ mergeParams: true });
@@ -344,18 +352,34 @@ async function readStreamGuarded(res, onEvent, opts) {
 
 // 非流式续写：把半截正文回灌为 assistant 消息 + 续写提示，无工具再请求，直到 stop 或达上限
 // M3：signal 贯穿（aborted 时 postChat 起飞前即抛 __userAbort，交调用方 catch）
+// 2026-09-30 抗短连加固：①postChat+圈外 res.json() 切 postChatJson（响应体读取入网关重试圈）；
+// ②循环体包 try/catch——单轮异常（网关重试耗尽后的失败）记台账（scope=chat-continue,status=error）
+//   后扣零进展预算继续，不再炸穿调用方；__userAbort/signal aborted 必须重抛；
+// ③零进展预算：异常轮不计入 maxCont，只扣 CONTINUATION_ZERO_PROGRESS_MAX（连续超 MAX 才
+//   退出）；200 但内容为空照旧 break（那是模型行为不是网络，不占预算）。
 async function continueNonStream(bookId, convo, cfg, partial, signal = null, maxCont = CONTINUATION_MAX) {
   let content = partial || '';
   let reasoning = '';
   let usage = null;
   const maxOut = chatModelOptions(cfg.model).maxOutputTokens;
-  for (let i = 0; i < maxCont; i++) {
+  let zeroUsed = 0; // 已消耗的零进展轮数（异常轮；连续超 CONTINUATION_ZERO_PROGRESS_MAX 才退出）
+  for (let i = 0; i < maxCont;) {
     const contConvo = [...convo, { role: 'assistant', content }, { role: 'user', content: CONTINUE_NUDGE }];
     const t0 = Date.now();
-    const res = await postChat(cfg.baseUrl, cfg.apiKey, {
-      model: cfg.model, messages: contConvo, max_tokens: maxOut, temperature: 0.7,
-    }, { signal });
-    const data = await res.json();
+    let data;
+    try {
+      data = await postChatJson({
+        baseUrl: cfg.baseUrl, apiKey: cfg.apiKey, signal,
+        body: { model: cfg.model, messages: contConvo, max_tokens: maxOut, temperature: 0.7 },
+      });
+    } catch (e) {
+      if ((e && e.__userAbort) || (signal && signal.aborted)) throw e; // 用户取消：原样重抛，不得吞掉
+      llmCallLog.record({ bookId, scope: 'chat-continue', model: cfg.model, baseUrl: cfg.baseUrl, outputReserve: maxOut, status: 'error', error: String((e && e.message) || e).slice(0, 300), durationMs: Date.now() - t0 });
+      zeroUsed++; // 异常轮不计入 maxCont，只扣零进展预算
+      if (zeroUsed > CONTINUATION_ZERO_PROGRESS_MAX) break;
+      continue;
+    }
+    i++; // 正常返回的轮才计入续写轮数
     if (data.usage) usage = data.usage;
     const msg = data.choices?.[0]?.message || {};
     const finishReason = data.choices?.[0]?.finish_reason || '';
@@ -368,9 +392,14 @@ async function continueNonStream(bookId, convo, cfg, partial, signal = null, max
   return { content, reasoning, usage };
 }
 
-// 流式续写：从半截正文无缝续写，新正文继续以 content 事件推送（前端天然追加），最多 CONTINUATION_MAX 次
-// 返回 { content, usage }：usage 取最后一轮用量（prompt 最大、最贴近当前上下文），供调用方计入上下文仪表
-// M3：signal 贯穿（断连即拆续写轮；aborted 时 postChat 起飞前即抛，catch 记台账后终止循环）
+// 流式续写：从半截正文无缝续写，新正文继续以 content 事件推送（前端天然追加）
+// 返回 { content, usage, stillTruncated }：usage 取最后一轮用量（prompt 最大、最贴近当前上下文），
+// 供调用方计入上下文仪表；stillTruncated 供调用方归一 finishReason（S2-04）。
+// M3：signal 贯穿（断连即拆续写轮；aborted 时 postChat 起飞前即抛，catch 记台账后终止循环）。
+// 2026-09-30 抗短连加固：循环重构为「有进展轮计入 maxCont + 零进展轮扣独立预算」——
+// 零进展轮（本轮 catch 且零新增，或正常结束但零新增且仍截断）不再立刻放弃续写，只扣
+// CONTINUATION_ZERO_PROGRESS_MAX 预算；**连续零进展超过 MAX**、非截断或 signal abort 才退出。
+// 每轮仍先推 recovering 事件；abort 前置检查保证断连后零调用。
 async function streamContinue(bookId, baseUrl, apiKey, model, convo, partial, send, signal = null, maxCont = CONTINUATION_MAX) {
   let content = partial || '';
   let lastUsage = null;
@@ -378,8 +407,14 @@ async function streamContinue(bookId, baseUrl, apiKey, model, convo, partial, se
   // S2-04：最后一轮是否仍截断（premature/length）——调用方据此归一 finishReason，
   // 供 normalizeFinish 区分「已补齐（stop）」与「补不齐（仍 length，半句=部分结果）」。
   let stillTruncated = true;
-  for (let i = 0; i < maxCont; i++) {
-    send({ type: 'recovering', reason: 'continue', round: i + 1 });
+  let progressRounds = 0;   // 有进展轮计数（≤ maxCont）
+  let zeroUsed = 0;         // 已消耗的零进展轮数（连续计；> CONTINUATION_ZERO_PROGRESS_MAX 才退出）
+  let round = 0;
+  for (;;) {
+    if (progressRounds >= maxCont || zeroUsed > CONTINUATION_ZERO_PROGRESS_MAX) break;
+    if (signal && signal.aborted) break; // M3：断连即拆——不再发起任何续写调用
+    round++;
+    send({ type: 'recovering', reason: 'continue', round });
     const contConvo = [...convo, { role: 'assistant', content }, { role: 'user', content: CONTINUE_NUDGE }];
     let finishReason = '';
     let premature = true;
@@ -405,9 +440,29 @@ async function streamContinue(bookId, baseUrl, apiKey, model, convo, partial, se
       llmCallLog.record({ bookId, scope: 'chat-stream-continue', model, baseUrl, outputReserve: maxOut, status: 'error', error: String((e && e.message) || e).slice(0, 300), durationMs: Date.now() - t0 });
     }
     stillTruncated = premature || finishReason === 'length';
-    if (!stillTruncated || !added.trim()) break;
+    if (added.trim()) {
+      progressRounds++;          // 有进展轮：照旧计入 maxCont
+      if (!stillTruncated) break;
+    } else if (!stillTruncated) {
+      break;                     // 正常收尾（stop）但零新增：模型行为不是网络——照旧退出，不占预算
+    } else {
+      zeroUsed++;               // 零进展轮：不计入 maxCont，扣零进展预算（连续超 MAX 才退出）
+    }
   }
   return { content, usage: lastUsage, stillTruncated };
+}
+
+// 首轮流「零外发」传输类失败重试判据（纯函数；2026-09-30 抗短连加固 C，导出供表驱动单测）：
+// error 为传输类（__timeout / __prematureStream / __transport / 网络错误名 / 未标注用户取消的
+// AbortError——复用 llm.isRetryableError 同一判定）且本轮未向前端外发任何正文或思考
+//（外发过再重发会把同一内容重复推给前端）、客户端仍在、尚未重试过 → 允许用原样带工具
+// 请求体重试一次首轮流（客户端零感知）。
+function shouldRetryFirstStream({ error, forwardedContent, forwardedReasoning, clientGone, retried }) {
+  if (retried) return false;
+  if (clientGone) return false;
+  if (String(forwardedContent || '').trim()) return false;
+  if (String(forwardedReasoning || '').trim()) return false;
+  return isRetryableError(error);
 }
 
 // S2-05 / C11：模型选项单一权威构造器——输出预算与思考开关字段由同一函数决定
@@ -1474,6 +1529,10 @@ router.post('/:bookId/chat/stream', async (req, res) => {
     };
 
     // ---- 首轮：带工具流式（stall 守护 + 提前结束检测） ----
+    // 2026-09-30 抗短连加固 C：首轮流若为传输类失败（__timeout/__prematureStream/__transport/
+    // 网络名/未标注用户取消的 AbortError）且未向前端外发任何正文/思考（外发过重发会重复推送）、
+    // 客户端仍在 → 用原样带工具的同一请求体重试一次（客户端零感知，不给前端加新事件）。
+    // 两次尝试各自落 llm_calls 行；abort 前置检查保证断连/取消后绝不重试。
     let fullContent = '', fullReasoning = '';
     let toolCalls = []; // 按 index 累积 delta.tool_calls
     let finishReason = '';
@@ -1481,54 +1540,75 @@ router.post('/:bookId/chat/stream', async (req, res) => {
     let firstPremature = false;
     let streamUsage = null;
 
-    const tFirst = Date.now();
-    try {
-      const upstream = await postChat(baseUrl, apiKey, {
-        model, messages: convo, max_tokens: maxOut, temperature: 0.7, stream: true,
-        stream_options: { include_usage: true },
-        tools: WRITING_SCHEMAS,
-      }, { signal: runAbort.signal, timeoutMs: STREAM_FIRST_BYTE_TIMEOUT_MS }); // A16：流式首字节超时（已放宽至 3 分钟，照顾推理模型思考期）；M3：断连即拆
-      upstreamOk = true;
-
-      const r = await readStreamGuarded(upstream, (json, choice) => {
-        const delta = choice.delta || {};
-        if (delta.reasoning_content) {
-          fullReasoning += delta.reasoning_content;
-          send({ type: 'reasoning', text: delta.reasoning_content });
-        }
-        if (delta.content) {
-          fullContent += delta.content;
-          send({ type: 'content', text: delta.content });
-        }
-        if (Array.isArray(delta.tool_calls)) {
-          for (const dtc of delta.tool_calls) {
-            const i = dtc.index ?? toolCalls.length;
-            if (!toolCalls[i]) toolCalls[i] = { id: '', type: 'function', function: { name: '', arguments: '' } };
-            if (dtc.id) toolCalls[i].id += dtc.id;
-            if (dtc.function?.name) toolCalls[i].function.name += dtc.function.name;
-            if (dtc.function?.arguments) toolCalls[i].function.arguments += dtc.function.arguments;
-          }
-        }
-      }, { stallMs: STREAM_STALL_TIMEOUT_MS, signal: runAbort.signal });
-      finishReason = r.finishReason;
-      firstPremature = r.premature;
-      if (r.usage) streamUsage = r.usage;
-    } catch (err) {
-      // 首轮建连/流中断：不盲目追加（避免重复）；据半截是否为空决定“续传”或“fresh 无工具兜底”
+    let firstStreamRetried = false;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      let firstErr = null;
+      const tAttempt = Date.now();
       upstreamOk = false;
-      firstPremature = true;
+      finishReason = '';
+      firstPremature = false;
+      streamUsage = null;
+      toolCalls = []; // 重试前清空累积器：上次尝试的 tool_call 残片不得混入本次
+      try {
+        const upstream = await postChat(baseUrl, apiKey, {
+          model, messages: convo, max_tokens: maxOut, temperature: 0.7, stream: true,
+          stream_options: { include_usage: true },
+          tools: WRITING_SCHEMAS,
+        }, { signal: runAbort.signal, timeoutMs: STREAM_FIRST_BYTE_TIMEOUT_MS }); // A16：流式首字节超时（已放宽至 6 分钟，照顾推理模型思考期）；M3：断连即拆
+        upstreamOk = true;
+
+        const r = await readStreamGuarded(upstream, (json, choice) => {
+          const delta = choice.delta || {};
+          if (delta.reasoning_content) {
+            fullReasoning += delta.reasoning_content;
+            send({ type: 'reasoning', text: delta.reasoning_content });
+          }
+          if (delta.content) {
+            fullContent += delta.content;
+            send({ type: 'content', text: delta.content });
+          }
+          if (Array.isArray(delta.tool_calls)) {
+            for (const dtc of delta.tool_calls) {
+              const i = dtc.index ?? toolCalls.length;
+              if (!toolCalls[i]) toolCalls[i] = { id: '', type: 'function', function: { name: '', arguments: '' } };
+              if (dtc.id) toolCalls[i].id += dtc.id;
+              if (dtc.function?.name) toolCalls[i].function.name += dtc.function.name;
+              if (dtc.function?.arguments) toolCalls[i].function.arguments += dtc.function.arguments;
+            }
+          }
+        }, { stallMs: STREAM_STALL_TIMEOUT_MS, signal: runAbort.signal });
+        finishReason = r.finishReason;
+        firstPremature = r.premature;
+        if (r.usage) streamUsage = r.usage;
+      } catch (err) {
+        // 首轮建连/流中断：不盲目追加（避免重复）；据半截是否为空决定“续传”或“fresh 无工具兜底”
+        firstErr = err;
+        upstreamOk = false;
+        firstPremature = true;
+      }
+      // 首轮调用落库（含本次请求组成估算）：每次尝试各一行；后续轮/续写/兜底各自单独成行
+      llmCallLog.record({
+        bookId, scope: 'chat-stream', model, baseUrl,
+        ...usageFields(streamUsage),
+        systemTokens: comp.sysT, historyTokens: comp.histT, toolTokens: comp.toolT, schemaTokens: schemaTokens(), outputReserve: maxOut,
+        finishReason: finishReason || (firstPremature ? 'premature' : ''),
+        status: upstreamOk ? 'ok' : 'error',
+        error: upstreamOk ? '' : '首轮建连或流中断',
+        durationMs: Date.now() - tAttempt,
+        partsJson: partsJsonOf(parts),
+      });
+      if (upstreamOk) break;
+      // 重试判据（纯函数）：传输类 + 零外发 + 客户端仍在 + 未重试过；signal 已 abort 一票否决
+      if (runAbort.signal.aborted) break;
+      if (!shouldRetryFirstStream({
+        error: firstErr,
+        forwardedContent: fullContent,
+        forwardedReasoning: fullReasoning,
+        clientGone,
+        retried: firstStreamRetried,
+      })) break;
+      firstStreamRetried = true; // 恰一次
     }
-    // 首轮调用落库（含本次请求组成估算）；后续轮/续写/兜底各自单独成行
-    llmCallLog.record({
-      bookId, scope: 'chat-stream', model, baseUrl,
-      ...usageFields(streamUsage),
-      systemTokens: comp.sysT, historyTokens: comp.histT, toolTokens: comp.toolT, schemaTokens: schemaTokens(), outputReserve: maxOut,
-      finishReason: finishReason || (firstPremature ? 'premature' : ''),
-      status: upstreamOk ? 'ok' : 'error',
-      error: upstreamOk ? '' : '首轮建连或流中断',
-      durationMs: Date.now() - tFirst,
-      partsJson: partsJsonOf(parts),
-    });
     // 客户端已断连：停止后续轮/续写/入库，避免白烧 tokens 与污染历史
     if (clientGone) { releaseRun(); return res.end(); }
 
@@ -1577,7 +1657,7 @@ router.post('/:bookId/chat/stream', async (req, res) => {
           const plain = await postChat(baseUrl, apiKey, {
             model, messages, max_tokens: maxOut, temperature: 0.7, stream: true,
             stream_options: { include_usage: true },
-          }, { signal: runAbort.signal, timeoutMs: STREAM_FIRST_BYTE_TIMEOUT_MS }); // A16：流式首字节超时（已放宽至 3 分钟，照顾推理模型思考期）；M3：断连即拆
+          }, { signal: runAbort.signal, timeoutMs: STREAM_FIRST_BYTE_TIMEOUT_MS }); // A16：流式首字节超时（已放宽至 6 分钟，照顾推理模型思考期）；M3：断连即拆
           const r = await readStreamGuarded(plain, (json, choice) => {
             const delta = choice.delta || {};
             if (delta.reasoning_content) {
@@ -1874,8 +1954,14 @@ router.delete('/:bookId/chat', async (req, res, next) => {
 });
 
 // 导出 compactBook 供测试（A12 事务原子性验证）；buildCompressTranscript 供压缩输入保尾单测；
-// followUpRounds 供 M3 abort 前置检查单测（不触发任何 LLM 调用的路径）
+// followUpRounds 供 M3 abort 前置检查单测（不触发任何 LLM 调用的路径）；
+// streamContinue/continueNonStream/CONTINUATION_ZERO_PROGRESS_MAX 供抗短连加固包 B 的续写链单测
+//（2026-09-30，直接调用+fetch 剧本 mock，compactBook 同款导出先例）
 router.compactBook = compactBook;
 router.buildCompressTranscript = buildCompressTranscript;
 router.followUpRounds = followUpRounds;
+router.streamContinue = streamContinue;
+router.continueNonStream = continueNonStream;
+router.CONTINUATION_ZERO_PROGRESS_MAX = CONTINUATION_ZERO_PROGRESS_MAX;
+router.shouldRetryFirstStream = shouldRetryFirstStream; // 抗短连加固包 C：纯函数表驱动单测
 module.exports = router;

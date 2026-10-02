@@ -1,0 +1,4 @@
+frontend/** text eol=lf
+frontend/**/*.jsx text eol=lf
+frontend/**/*.js text eol=lf
+frontend/**/*.mjs text eol=lf

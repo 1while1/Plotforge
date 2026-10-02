@@ -19,6 +19,7 @@
 
 ```bash
 npm install
+npm run build   # 前端为 React + Vite，构建产物输出到 public/
 npm start
 ```
 
@@ -26,7 +27,7 @@ npm start
 
 首次启动会下载本地 Embedding 模型（约 90MB，用于章节向量索引与检索），之后完全离线可用。
 
-端口可用环境变量覆盖：`PORT=8080 npm start`。
+端口可用环境变量覆盖：`PORT=8080 npm start`。前端开发调试可用 `npm run dev`（Vite 热更新）。
 
 ## 示例数据
 
@@ -43,20 +44,22 @@ node tools/seed-demo.js
 ```bash
 # 建议指向独立临时库，避免碰本地数据
 NOVEL_DB_FILE=/tmp/qa.db npm test        # Windows PowerShell: $env:NOVEL_DB_FILE="C:\tmp\qa.db"
+npm run test:fe                          # 前端组件测试（vitest）
 ```
 
 ## 技术栈
 
+- 前端：React 19 + react-router + Vite（`frontend/`，构建产物经 Express 静态服务）
 - 后端：Node.js + Express 5，sql.js（SQLite WASM）持久化到 `data/novel.db`
 - 检索：`@xenova/transformers` 本地 Embedding + 余弦检索（`server/vector/`），向量存于同一份 SQLite 库
-- 前端：原生 ES 模块 SPA（`public/`），无构建步骤
 - LLM：OpenAI 兼容协议，设置页可切换服务商与模型
 
 ## 目录结构
 
 ```
+frontend/  React 单页应用源码（页面 / 组件 / hooks / lib）
+public/    前端构建产物与静态资源
 server/    Express 路由、领域服务、上下文管道、LLM 网关、工具系统
-public/    前端 SPA（书架 / 写作页 / 各工作台 / 参谋台）
 test/      node:test 单元与集成测试
 tools/     播种、备份、蒸馏等命令行工具
 ```

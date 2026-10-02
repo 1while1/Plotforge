@@ -267,8 +267,11 @@ router.post('/:bookId/volumes/:id/summary', async (req, res, next) => {
     // S5-01/C06：来源快照必须在 await 模型之前捕获（指纹含卷标题 + 卷内有总结章的有序
     // title/summary + 结构位置 + 配置摘要；不含卷总结自身，保存后不会立刻自判过期）。
     const sourceSnapshot = sourceGuard.captureSource({ bookId, kind: 'volume', entityId: id });
+    // 思考模型会把推理 token 一并计入 max_tokens：500 的预算实测被推理吃光后只剩
+    // 一句残句（甚至空正文报错）。300 字正文 ~600 token，预算放宽到 10000 以容纳
+    // 长卷多章摘要汇总时的推理开销。
     const summary = await callLLM(messages, {
-      maxTokens: 500,
+      maxTokens: 10000,
       temperature: 0.5
     });
 

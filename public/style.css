@@ -2306,7 +2306,8 @@ select:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0
 .tl-strip-label { color: var(--muted); font-size: 11px; letter-spacing: .1em; flex-shrink: 0; }
 .tl-strip-bars { display: flex; align-items: flex-end; gap: 3px; height: 44px; }
 .tl-bar { width: 9px; border-radius: 2px 2px 0 0; background: var(--border-strong); opacity: .9; transition: height .25s; }
-.tl-bar.tier-0 { background: transparent; border: 1px dashed var(--border-strong); }
+.tl-bar.tier-0 { background: #cfc9bb; }
+.tl-bar.tl-bar-empty { background: transparent; border: 1px dashed var(--border-strong); }
 .tl-bar.tier-1 { background: #a39c8e; }
 .tl-bar.tier-2 { background: #6f7f92; }
 .tl-bar.tier-3 { background: #b3814d; }

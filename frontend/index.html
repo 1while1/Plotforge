@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>墨砚 · AI 小说工坊</title>
+<link rel="stylesheet" href="style.css?v=20260923a" vite-ignore><!-- P6-3：style.css 为手工维护的静态资产，vite-ignore 让 Vite 跳过该 link 的处理（属性在产物中被移除、href 原值保留） -->
+</head>
+<body>
+
+<!-- ============ 书架页 ============ -->
+<div id="page-shelf" class="page">
+  <header class="topbar">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V4H6.5A2.5 2.5 0 0 0 4 6.5v13z"/>
+        <path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/>
+      </svg>
+      <h1>墨砚</h1>
+      <span class="brand-sub">AI 小说工坊</span>
+    </div>
+    <nav class="topbar-actions">
+      <a href="#/agent" class="btn btn-ghost">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a7 7 0 0 1 7 7c0 2.4-1.2 4.2-2.5 5.5-.9.9-1.5 2-1.5 3.5H9c0-1.5-.6-2.6-1.5-3.5C6.2 13.2 5 11.4 5 9a7 7 0 0 1 7-7z"/><path d="M9 21h6"/></svg>
+        AI 助手
+      </a>
+      <a href="#/profile" class="btn btn-ghost">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="3.6"/><path d="M4.8 20c1.6-3.8 4.1-5.6 7.2-5.6s5.6 1.8 7.2 5.6"/></svg>
+        个人中心
+      </a>
+      <a href="#/settings" class="btn btn-ghost">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        设置
+      </a>
+    </nav>
+  </header>
+
+  <main class="shelf-main">
+    <div class="shelf-head">
+      <h2>我的书架</h2>
+      <div>
+        <button id="btn-recycle-bin" class="btn btn-ghost" title="删除的书会自动备份并保留 30 天">回收站</button>
+        <button id="btn-new-book" class="btn btn-primary">新建作品</button>
+      </div>
+    </div>
+    <div id="book-grid" class="book-grid"></div>
+    <div id="shelf-empty" class="empty-state hidden">
+      <p>书架还是空的</p>
+      <p class="empty-hint">点击「新建作品」开始你的第一部小说</p>
+    </div>
+  </main>
+</div>
+
+<!-- ============ 书籍工作台 ============ -->
+<div id="page-book" class="page hidden">
+  <header class="topbar">
+    <div class="topbar-left">
+      <a href="#/" class="btn btn-ghost" title="返回书架">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M19 12H5m7-7-7 7 7 7"/></svg>
+        书架
+      </a>
+      <h1 id="book-title" class="book-title"></h1>
+    </div>
+    <nav class="topbar-actions">
+      <button id="btn-toggle-left-panel" class="btn btn-ghost" type="button" title="收起/展开左侧创作导航（章节/大纲/状态/世界观/人物）；收起后编辑器与写作助手不受影响，当前书/章/会话/保存状态始终显示在上方状态条">收起侧栏</button>
+      <button id="btn-mode" class="btn btn-ghost" title="协作模式：AI 拿不准时会停下来问你；直接写模式：AI 直接成文">协作模式</button>
+      <a href="#/profile" class="btn btn-ghost" title="个人中心：本书提示词 / 作家卡 / 错题库">个人中心</a>
+      <a href="#/settings" class="btn btn-ghost">设置</a>
+    </nav>
+  </header>
+
+  <!-- S4-02：当前书 / 当前章 / 当前写作会话 / 保存状态始终可见（在可折叠侧栏之外） -->
+  <div id="writing-status-bar" class="writing-status-bar" role="status">
+    <span class="ws-chip"><span class="ws-label">书</span><span id="writing-status-book">—</span></span>
+    <span class="ws-chip"><span class="ws-label">当前章</span><span id="writing-status-chapter">未选择章节</span></span>
+    <span class="ws-chip"><span class="ws-label">写作会话</span><span id="writing-status-conversation">（默认：历史对话）</span></span>
+    <span class="ws-chip"><span class="ws-label">保存状态</span><span id="writing-status-save">已保存</span></span>
+  </div>
+
+  <main id="book-workbench" class="workbench">
+    <!-- 左栏：章节 / 世界观 / 人物 -->
+    <aside id="panel-left" class="panel panel-left">
+      <div class="sidebar-toolbar">
+        <span>创作导航</span>
+        <button id="btn-sidebar-config" class="btn btn-ghost btn-small" type="button">调整侧栏</button>
+      </div>
+      <div class="tabs">
+        <button class="tab active" data-tab="chapters">章节</button>
+        <button class="tab" data-tab="outline">大纲</button>
+        <button class="tab" data-tab="state">状态</button>
+        <button class="tab" data-tab="world">世界观</button>
+        <button class="tab" data-tab="characters">人物</button>
+      </div>
+
+      <div id="tab-state" class="tab-pane hidden">
+        <a class="module-workbench-link" data-workbench="ledger">进入故事台账工作台 →</a>
+        <div id="state-book-mount"></div>
+      </div>
+
+      <div id="tab-outline" class="tab-pane hidden">
+        <a class="module-workbench-link" data-workbench="outline">进入大纲工作台 →</a>
+        <div id="book-outline-mount"></div>
+      </div>
+
+      <div id="tab-chapters" class="tab-pane">
+        <div class="pane-head">
+          <span class="pane-head-btns">
+            <button id="btn-add-chapter" class="btn btn-small">+ 章节</button>
+            <button id="btn-add-volume" class="btn btn-small">+ 分卷</button>
+            <button id="btn-open-read" class="btn btn-small btn-outline" title="在独立页面阅读 / 精修本书">阅读/精修</button>
+            <button id="btn-chapter-recycle" class="btn btn-small btn-outline" title="查看已删除的章节并恢复">回收站</button>
+          </span>
+        </div>
+        <ul id="chapter-list" class="item-list"></ul>
+      </div>
+
+      <div id="tab-world" class="tab-pane hidden">
+        <a class="module-workbench-link" data-workbench="world">进入世界观工作台 →</a>
+        <div class="pane-head">
+          <span class="pane-title">世界观设定</span>
+          <button id="btn-add-world" class="btn btn-small">+ 新建</button>
+        </div>
+        <ul id="world-list" class="item-list"></ul>
+      </div>
+
+      <div id="tab-characters" class="tab-pane hidden">
+        <a class="module-workbench-link" data-workbench="characters">进入人物工作台 →</a>
+        <div class="pane-head">
+          <span class="pane-title">人物卡片</span>
+          <button id="btn-add-character" class="btn btn-small">+ 新建</button>
+        </div>
+        <ul id="character-list" class="item-list"></ul>
+      </div>
+    </aside>
+
+    <!-- 中栏：AI 对话 -->
+    <section class="panel panel-chat">
+      <div class="chat-head">
+        <span class="pane-title">写作助手</span>
+        <span class="pane-head-btns">
+          <select id="writing-conversation-select" title="切换写作会话（历史按任务隔离；默认为本书历史对话）"></select>
+          <button id="btn-new-writing-conv" class="btn btn-ghost btn-small" title="开始一个新的写作会话（原会话历史保留）">新会话</button>
+          <button id="btn-open-agent-discuss" class="btn btn-ghost btn-small" title="到 AI 助手为本书新开一个整体讨论专题：只带这本书与当前章（可选人物），默认不带写作对话历史；从助手返回后还原同一会话同一章">另开整体讨论</button>
+          <button id="btn-clear-chat" class="btn btn-ghost btn-small" title="清空当前会话的对话记录">清空</button>
+        </span>
+      </div>
+      <div class="ctx-meter" id="ctx-meter" title="上下文窗口占用（真实值来自最近一次对话的 usage；未对话时为估算）">
+        <div class="ctx-bar"><div class="ctx-fill" id="ctx-fill"></div></div>
+        <span class="ctx-text" id="ctx-text">上下文 — / —</span>
+        <button id="btn-ctx-detail" class="btn btn-ghost btn-small" title="查看上下文详细组成（系统提示各节/对话历史/工具结果/输出预留 占比）">明细</button>
+        <button id="btn-compress" class="btn btn-ghost btn-small" title="把较早的对话压缩成存档摘要，释放上下文空间">压缩</button>
+      </div>
+      <!-- S4-05：统一任务卡（任务徽标 / 保存三态 / 资料更新）。内容由 React 侧
+           frontend/lib/run-status.js 经旧名 window.RunStatus 渲染（S5-10 起，legacy 标签已退役）。 -->
+      <div id="writing-run-card" class="run-card hidden" role="status"></div>
+      <div id="chat-messages" class="chat-messages"></div>
+      <form id="chat-form" class="chat-input chat-composer">
+        <div class="composer-card">
+          <textarea id="chat-text" rows="3" placeholder="和 AI 聊聊剧情，或让它续写正文…（Ctrl+Enter 发送）"></textarea>
+          <div class="composer-foot">
+            <button type="button" id="btn-consult" class="consult-pill" title="参谋模式：只出剧情走向/人物行为建议，不写正文">参谋</button>
+            <span class="composer-ops">
+              <button type="button" id="btn-chat-stop" class="btn btn-small btn-stop hidden" title="中止当前生成（已生成的部分会保留）">停止</button>
+              <button type="submit" id="btn-send" class="btn btn-primary">发送</button>
+            </span>
+          </div>
+        </div>
+      </form>
+    </section>
+
+    <!-- 右栏：章节编辑器 -->
+    <section class="panel panel-editor">
+      <div id="editor-empty" class="empty-state">
+        <p>未选择章节</p>
+        <p class="empty-hint">从左侧选择或新建一个章节开始写作</p>
+      </div>
+      <div id="editor-body" class="hidden">
+        <!-- 润色 diff 对比视图 -->
+        <div id="diff-view" class="diff-view hidden">
+          <div class="diff-head">
+            <span class="pane-title">润色对比 <span id="diff-scope" class="diff-scope"></span></span>
+            <span class="diff-actions">
+              <button id="btn-diff-reject" class="btn btn-small btn-ghost">放弃</button>
+              <button id="btn-diff-accept" class="btn btn-small btn-primary">采纳润色</button>
+            </span>
+          </div>
+          <div id="diff-body" class="diff-body"></div>
+        </div>
+        <div id="relock-banner" class="relock-banner hidden">
+          <span>本章曾定稿，正文已修改：语义检索已暂停覆盖本章。核对内容后可重新定稿。</span>
+          <button id="btn-relock" class="btn btn-small btn-outline" type="button">重新定稿</button>
+        </div>
+        <div class="editor-head">
+          <input id="chapter-title-input" class="chapter-title-input" type="text" placeholder="章节标题">
+          <div class="editor-actions">
+            <button id="btn-lock-chapter" class="btn btn-small btn-outline" title="定稿：作者确认本章不再修改，定稿后内容才会进入向量检索（供 AI 召回旧剧情细节）">定稿</button>
+            <button id="btn-polish-chapter" class="btn btn-small btn-outline">润色本章</button>
+            <button id="btn-save-chapter" class="btn btn-small">保存</button>
+            <button id="btn-gen-summary" class="btn btn-small btn-outline">生成总结</button>
+          </div>
+        </div>
+        <input id="chapter-beat" class="chapter-beat" type="text" placeholder="本章节拍（可选）：本章必须完成的剧情节点，AI 写作时会参考">
+        <textarea id="chapter-content" class="chapter-content" placeholder="在这里写作，或从对话中插入 AI 生成的内容…"></textarea>
+        <div class="editor-foot">
+          <button id="btn-polish-selection" class="btn btn-small btn-ghost hidden">润色选中段落</button>
+          <span id="word-count" class="word-count"></span>
+        </div>
+        <div id="summary-box" class="summary-box hidden">
+          <div class="summary-label">本章总结 <span class="summary-hint">（AI 写下一章时会参考，防止剧情漂移）</span></div>
+          <p id="summary-text"></p>
+        </div>
+        <button id="btn-enter-refine" class="refine-cta" type="button" title="在阅读/精修页打开本章，逐段打磨字句">
+          <span class="refine-cta-main">
+            <i class="refine-cta-line"></i><span class="refine-cta-title">进入精修</span><i class="refine-cta-line"></i>
+          </span>
+          <span class="refine-cta-hint">沉浸阅读 · 逐段打磨</span>
+        </button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ============ 专项工作台 ============ -->
+<div id="page-workbench" class="page hidden">
+  <header class="topbar workbench-topbar">
+    <div class="topbar-left">
+      <a id="workbench-return" href="#/" class="btn btn-ghost">← 返回写作页</a>
+      <div>
+        <span id="workbench-book-title" class="workbench-book-label"></span>
+        <h1 id="workbench-title" class="book-title">创作工作台</h1>
+      </div>
+    </div>
+    <nav id="workbench-nav" class="workbench-nav" aria-label="专项工作台导航"></nav>
+    <span class="notify-wrap">
+      <button id="workbench-notify" class="btn btn-ghost notify-bell hidden" type="button" title="任务通知（最近一条运行记录）">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" width="15" height="15" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+        <span id="workbench-notify-dot" class="notify-dot hidden"></span>
+      </button>
+      <div id="workbench-notify-pop" class="notify-pop hidden">
+        <div id="workbench-notify-title" class="notify-pop-title"></div>
+        <div id="workbench-notify-body" class="notify-pop-body"></div>
+        <a id="workbench-notify-link" class="notify-link hidden" href="#">查看完整任务卡 →</a>
+      </div>
+    </span>
+  </header>
+  <!-- S4-05：工作台任务提示改为右下角 Toast（自动消失）+ 顶栏铃铛回看，内容由 workbench-shell.js 渲染 -->
+  <div id="workbench-toast" class="wb-toast hidden" role="status">
+    <div class="wb-toast-title"></div>
+    <div class="wb-toast-body"></div>
+  </div>
+  <main id="workbench-content" class="special-workbench">
+    <div class="workbench-loading">正在打开工作台…</div>
+  </main>
+</div>
+
+<!-- ============ 时间线全屏页 ============ -->
+<div id="page-timeline" class="page hidden">
+  <header class="topbar workbench-topbar">
+    <div class="topbar-left">
+      <a id="timeline-full-return" href="#/" class="btn btn-ghost">← 返回人物</a>
+      <div>
+        <span class="workbench-kicker">NARRATIVE TIMELINE</span>
+        <h1 id="timeline-full-title" class="book-title">事件时间线</h1>
+      </div>
+    </div>
+  </header>
+  <main id="timeline-full-content" class="special-workbench">
+    <div class="workbench-loading">正在整理人物时间线…</div>
+  </main>
+</div>
+
+<!-- ============ 设置页 ============ -->
+<div id="page-settings" class="page hidden">
+  <header class="topbar">
+    <div class="topbar-left">
+      <a href="#/" class="btn btn-ghost">书架</a>
+      <h1 class="book-title">设置</h1>
+    </div>
+  </header>
+  <main class="settings-main">
+    <section class="settings-card">
+      <h3>模型接口</h3>
+      <label class="field">
+        <span>渠道</span>
+        <select id="set-channel">
+          <option value="paid">付费渠道（zen/go · 需要 API Key）</option>
+          <option value="free">免费渠道（zen · 无需 API Key）</option>
+          <option value="agnes">Agnes（apihub · 需要 API Key）</option>
+          <option value="stepfun">StepFun 官方（step_plan · 需要 API Key）</option>
+          <option value="custom">自定义</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Base URL</span>
+        <input id="set-base-url" type="text" placeholder="https://apihub.agnes-ai.com/v1">
+      </label>
+      <label class="field">
+        <span>API Key <small id="api-key-hint">（免费渠道可留空）</small></span>
+        <input id="set-api-key" type="text" placeholder="sk-…">
+      </label>
+      <label class="field">
+        <span>模型</span>
+        <input id="set-model" type="text" list="model-options" placeholder="deepseek-v4-flash">
+        <datalist id="model-options">
+          <option value="deepseek-v4-flash">付费 · DeepSeek V4 Flash</option>
+          <option value="deepseek-v4-flash-free">免费 · DeepSeek V4 Flash</option>
+          <option value="mimo-v2.5-free">免费 · MiMo V2.5</option>
+          <option value="nemotron-3-ultra-free">免费 · Nemotron 3 Ultra</option>
+          <option value="north-mini-code-free">免费 · North Mini Code</option>
+          <option value="agnes-2.5-flash">Agnes · 2.5 Flash（快）</option>
+          <option value="agnes-2.5-pro">Agnes · 2.5 Pro（强）</option>
+          <option value="agnes-2.0-flash">Agnes · 2.0 Flash</option>
+          <option value="agnes-2.5-pro-alpha">Agnes · 2.5 Pro Alpha</option>
+          <option value="step-3.7-flash">StepFun · 3.7 Flash（蒸馏同款，实测可跑）</option>
+          <option value="step-3.5-flash">StepFun · 3.5 Flash</option>
+        </datalist>
+      </label>
+      <label class="field">
+        <span>上下文窗口大小 <small id="ctx-window-hint">自动（跟随模型）</small></span>
+        <input id="set-context-window" type="number" min="8000" step="1000" placeholder="128000">
+        <button id="btn-refresh-models" class="btn btn-ghost btn-small" type="button" title="拉取渠道 /models 接口报告的上下文上限（官方第一信息源，不猜测）">刷新官方源</button>
+      </label>
+      <label class="field">
+        <span>自动压缩线 <small>（占用达到 窗口×此比例 时自动压缩对话，0.5~0.95）</small></span>
+        <input id="set-compress-ratio" type="number" min="0.5" max="0.95" step="0.05" placeholder="0.8">
+      </label>
+      <label class="field">
+        <span>关闭深度思考的模型 <small>（逗号分隔；留空=不干预，* = 全部）</small></span>
+        <input id="set-disable-thinking" type="text" placeholder="留空不干预，例如 deepseek-v4-flash">
+        <small class="field-hint">写一轮最多 4 次模型调用。个别推理模型（实测 deepseek-v4-flash）每次先思考几千 token，一轮要等 60~77 秒；点名后请求会带上 enable_thinking:false，实测单次 6.8 秒 → 3.9 秒，正文与工具调用不变。换渠道后若报「未知请求字段」，清空本项即可。</small>
+      </label>
+      <div class="settings-row">
+        <button id="btn-save-settings" class="btn btn-primary">保存设置</button>
+        <button id="btn-test-conn" class="btn btn-outline">测试连接</button>
+        <span id="test-result" class="test-result"></span>
+      </div>
+    </section>
+
+    <section class="settings-card">
+      <h3>搜索工具（AnySearch）</h3>
+      <label class="field">
+        <span>联网搜索 Key <small>（AnySearch · 可留空匿名使用，限额较低）</small></span>
+        <input id="set-anysearch-key" type="text" placeholder="留空则匿名">
+      </label>
+      <label class="field field-inline">
+        <input id="set-search-enabled" type="checkbox">
+        <span>启用联网搜索 <small>（关闭后 web_search / batch_search / web_extract / skill_search 一律不出网）</small></span>
+      </label>
+      <label class="field">
+        <span>端点 <small>（只读）</small></span>
+        <input id="set-search-endpoint" type="text" readonly>
+        <small>端点由服务端锁定（A6 安全），改端点请设环境变量 ANYSEARCH_ENDPOINT 后重启</small>
+      </label>
+      <label class="field">
+        <span>默认结果条数 <small>（1-10，工具调用未指定时生效）</small></span>
+        <input id="set-search-max-results" type="number" min="1" max="10" step="1" placeholder="5">
+      </label>
+      <label class="field">
+        <span>默认时效过滤</span>
+        <select id="set-search-freshness">
+          <option value="">不限</option>
+          <option value="day">一天内</option>
+          <option value="week">一周内</option>
+          <option value="month">一月内</option>
+          <option value="year">一年内</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>默认区域</span>
+        <select id="set-search-zone">
+          <option value="">不限</option>
+          <option value="cn">国内</option>
+          <option value="intl">国际</option>
+        </select>
+      </label>
+      <div class="settings-row">
+        <button id="btn-save-search-settings" class="btn btn-primary">保存搜索设置</button>
+        <button id="btn-test-search" class="btn btn-outline">测试搜索</button>
+        <span id="search-test-result" class="test-result"></span>
+      </div>
+    </section>
+
+    <section class="settings-card">
+      <h3>全局系统提示词</h3>
+      <p class="field-hint">所有书籍默认使用；单本书可在工作台「本书提示词」中覆盖。</p>
+      <textarea id="set-system-prompt" rows="12"></textarea>
+      <div class="settings-row">
+        <button id="btn-save-prompt" class="btn btn-primary">保存提示词</button>
+        <button id="btn-reset-prompt" class="btn btn-ghost">恢复默认</button>
+      </div>
+    </section>
+
+    <section class="settings-card">
+      <h3>作家仓库</h3>
+      <p class="field-hint">在系统提示词与写作之间的一层：<strong>文风注入</strong>（写之前让 AI 按风格写）+ <strong>AI 味体检</strong>（写完后用朱雀检测，判为 AI 的语句进错题库）。体检完全旁路，失败不影响写作。</p>
+
+      <label class="field">
+        <span>朱雀检测 Key <small>（用于 AI 味体检；不填则体检不可用，其他功能不受影响）</small></span>
+        <input id="set-zhuque-key" type="text" placeholder="未配置（可选，体检用）">
+      </label>
+      <label class="field">
+        <span>检测端点 <small>（只读）</small></span>
+        <input id="set-zhuque-endpoint" type="text" readonly>
+        <small>端点由服务端锁定（安全），改端点请设环境变量 ZHUQUE_ENDPOINT 后重启</small>
+      </label>
+
+      <label class="field">
+        <span>体检触发方式</span>
+        <select id="set-healthcheck-mode">
+          <option value="manual">手动（点按钮才检测）</option>
+          <option value="auto">自动（每章定稿后检测一次）</option>
+        </select>
+        <small id="healthcheck-hint">朱雀免费额度约 50 万 token/月（约 80 章），自动模式请留意额度。</small>
+      </label>
+
+      <label class="field field-inline">
+        <input id="set-style-layer-enabled" type="checkbox">
+        <span>启用文风注入 <small>（把「怎么写的约束」注入系统提示词；关闭后写作行为回到不加风格层的状态）</small></span>
+      </label>
+
+      <div class="settings-row">
+        <button id="btn-save-style-lab" class="btn btn-primary">保存作家仓库设置</button>
+        <button id="btn-test-zhuque" class="btn btn-outline">测试检测</button>
+        <span id="zhuque-test-result" class="test-result"></span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ============ 个人中心（创作者总览：作家卡 / 错题库 / 本书提示词的统筹入口，汇总+按书下钻） ============ -->
+<div id="page-profile" class="page hidden">
+  <header class="topbar">
+    <div class="topbar-left">
+      <a href="#/" class="btn btn-ghost" title="返回书架">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M19 12H5m7-7-7 7 7 7"/></svg>
+        书架
+      </a>
+      <h1 class="book-title">个人中心</h1>
+    </div>
+    <nav class="topbar-actions">
+      <a href="#/settings" class="btn btn-ghost">设置</a>
+    </nav>
+  </header>
+  <main class="profile-main">
+    <section class="profile-hero">
+      <div class="profile-seal" aria-hidden="true">墨砚</div>
+      <div class="profile-hero-text">
+        <div class="profile-hero-title">创作者印记</div>
+        <div class="profile-hero-sub">笔墨所至，皆有留痕</div>
+      </div>
+      <div id="profile-stats" class="profile-stats"></div>
+    </section>
+    <section class="profile-cards">
+      <article class="profile-card">
+        <div class="profile-card-head">
+          <span class="profile-card-mark" aria-hidden="true">卡</span>
+          <h3>作家卡</h3>
+          <span class="profile-card-sum" id="profile-sum-cards"></span>
+        </div>
+        <p class="profile-card-desc">全库文风卡与每本书的用卡情况；点书名进入该书的卡片管理与注入预览。</p>
+        <div class="profile-book-rows" id="profile-rows-cards"></div>
+      </article>
+      <article class="profile-card">
+        <div class="profile-card-head">
+          <span class="profile-card-mark" aria-hidden="true">错</span>
+          <h3>错题库</h3>
+          <span class="profile-card-sum" id="profile-sum-stylelab"></span>
+        </div>
+        <p class="profile-card-desc">朱雀判为 AI 味的语句标本，按书归档；点书名进入该书的语料复核与导出。</p>
+        <div class="profile-book-rows" id="profile-rows-stylelab"></div>
+      </article>
+      <article class="profile-card">
+        <div class="profile-card-head">
+          <span class="profile-card-mark" aria-hidden="true">词</span>
+          <h3>本书提示词</h3>
+          <span class="profile-card-sum" id="profile-sum-prompts"></span>
+        </div>
+        <p class="profile-card-desc">单本书对全局系统提示词的覆盖；点书名直接编辑，不进工作台。</p>
+        <div class="profile-book-rows" id="profile-rows-prompts"></div>
+      </article>
+    </section>
+  </main>
+</div>
+
+<!-- ============ 作家卡页（作家仓库：卡片管理 + 本书用卡绑定 + 注入预览） ============ -->
+<div id="page-cards" class="page hidden">
+  <header class="topbar">
+    <div class="topbar-left">
+      <a id="cards-return" href="#/profile" class="btn btn-ghost">← 返回个人中心</a>
+      <h1 class="book-title">作家卡</h1>
+    </div>
+    <nav class="topbar-actions">
+      <button id="cards-new" class="btn btn-ghost">新建卡</button>
+    </nav>
+  </header>
+  <main class="settings-main">
+    <section class="settings-card">
+      <h3>本书用哪几张卡</h3>
+      <p class="field-hint">一张<strong>主卡</strong>是这本书的风格本体（如「古龙武侠」），若干张<strong>辅卡</strong>是叠加的修正层（如「去 AI 味·通用」，任何主卡都能带上）。同名规则以主卡为准。改完<strong>下一轮对话立即生效</strong>，不需要重启。</p>
+      <div id="cards-binding" class="cards-binding">载入中…</div>
+    </section>
+
+    <section class="settings-card">
+      <h3>作家卡库</h3>
+      <p class="field-hint">一张卡 = 人设（第一人称自述）+ 指纹（结构化短句）+ 规则条目 + 范文段落。点卡片查看与编辑。</p>
+      <div id="cards-list" class="cards-list"></div>
+    </section>
+
+    <section class="settings-card">
+      <h3>注入预览</h3>
+      <p class="field-hint">这是本书此刻真正会送进系统提示词的内容。看不到注入结果，换卡就是盲改——所以这段必须与写作时一致。</p>
+      <div id="cards-preview-meta" class="field-hint"></div>
+      <pre id="cards-preview" class="cards-preview">载入中…</pre>
+    </section>
+  </main>
+</div>
+
+<!-- 卡片编辑器（模态） -->
+<div id="card-editor" class="modal-mask hidden">
+  <div class="modal modal-wide">
+    <header class="modal-head">
+      <h3 id="card-editor-title">编辑卡片</h3>
+      <button id="card-editor-close" class="btn btn-ghost" type="button">关闭</button>
+    </header>
+    <div class="modal-body">
+      <label class="field">
+        <span>卡名</span>
+        <input id="card-name" type="text" placeholder="如：古龙武侠 / 盐选快爽 / 我的作者印记">
+      </label>
+      <label class="field">
+        <span>卡类型</span>
+        <select id="card-kind">
+          <option value="preset">预设（手工编写）</option>
+          <option value="imprint">作者印记（从样本蒸馏）</option>
+          <option value="basic">基础（去 AI 味通用）</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>人设 <small>（第一人称自述：这位作者信奉什么、怕什么。写成一整段话，会原样注入）</small></span>
+        <textarea id="card-persona" rows="5" placeholder="你是一位……"></textarea>
+      </label>
+      <label class="field">
+        <span>风格指纹 <small>（每行一条「键: 值」，键可用 stance/sentence/diction/psychology/dialogue/narrative/warning）</small></span>
+        <textarea id="card-profile" rows="6" placeholder="stance: 宁可少写一句，不要多写一句。"></textarea>
+      </label>
+      <label class="field field-inline">
+        <input id="card-enabled" type="checkbox">
+        <span>启用 <small>（停用后即时从所有引用它的书里消失，不需要逐本解绑）</small></span>
+      </label>
+
+      <h4 class="card-sub">规则条目 <small>（must = 全文注入；normal/hint = 只进规则目录）</small></h4>
+      <div id="card-rules" class="card-rules"></div>
+      <button id="card-add-rule" class="btn btn-small btn-outline" type="button">+ 加一条规则</button>
+
+      <h4 class="card-sub">范文段落 <small>（学习语感用；有语料才注入，整段进整段出）</small></h4>
+      <div id="card-samples" class="card-samples"></div>
+      <button id="card-add-sample" class="btn btn-small btn-outline" type="button">+ 加一段范文</button>
+
+      <p class="field-hint" id="card-vector-hint">向量检索接口已预留（style_samples.vector / vector_model / indexed_at 三列已建）：将来把整部作品灌进卡里，可按当前章节检索最相似的段落作为范文。当前未接线，按顺序直出。</p>
+    </div>
+    <footer class="modal-foot">
+      <button id="card-save" class="btn btn-primary">保存卡片</button>
+      <button id="card-delete" class="btn btn-ghost">删除卡片</button>
+      <span id="card-editor-msg" class="test-result"></span>
+    </footer>
+  </div>
+</div>
+
+<!-- ============ 错题库页（作家仓库：朱雀判为 AI 的语句语料，供提取检测特征） ============ -->
+<div id="page-stylelab" class="page hidden">
+  <header class="topbar">
+    <div class="topbar-left">
+      <a id="stylelab-return" href="#/profile" class="btn btn-ghost">← 返回个人中心</a>
+      <h1 id="stylelab-book-title" class="book-title">错题库</h1>
+    </div>
+  </header>
+  <main class="settings-main">
+    <div id="stylelab-mount"></div>
+
+    <div id="curve-mount"></div>
+  </main>
+</div>
+
+<!-- ============ AI 助手页 ============ -->
+<div id="page-agent" class="page hidden">
+  <header class="topbar">
+    <div class="topbar-left">
+      <a href="#/" class="btn btn-ghost">书架</a>
+      <a id="agent-return-writing" href="#/" class="btn btn-ghost hidden" title="回到写作页：还原离开时的同一写作会话与同一章">← 返回写作页</a>
+      <h1 class="book-title">AI 助手</h1>
+      <span id="agent-model" class="agent-model-tag"></span>
+    </div>
+    <nav class="topbar-actions">
+      <button id="btn-agent-compress" class="btn btn-ghost" title="把当前会话较早的对话压缩成存档摘要（原消息不删除，可还原）">压缩</button>
+      <button id="btn-agent-restore" class="btn btn-ghost hidden" title="还原当前会话的全部归档对话">还原</button>
+      <button id="btn-agent-clear" class="btn btn-ghost" title="在「范围」内开始一个新的助手会话（原会话历史保留）">新会话</button>
+    </nav>
+  </header>
+
+  <!-- S4-01b：范围（一本书 / 全局资源）、当前会话、剧情边界与「讨论还是执行」始终可见 -->
+  <div class="agent-scope-bar">
+    <label class="agent-scope-field">
+      <span class="agent-scope-label">范围</span>
+      <select id="agent-scope-select" title="交流范围：全局资源（跨书检索与找书）或某一本书（剧情讨论与执行）"></select>
+    </label>
+    <label class="agent-scope-field">
+      <span class="agent-scope-label">会话</span>
+      <select id="agent-conversation-select" title="当前会话（历史按会话隔离；切换范围只选择或新建，不改写原会话归属）"></select>
+    </label>
+    <label class="agent-scope-field">
+      <span class="agent-scope-label">剧情边界</span>
+      <select id="agent-boundary-select" title="资料快照的时序边界：截至某一章或全书（仅书籍范围可用；不选择则不沿用上一轮边界）"></select>
+    </label>
+    <button id="btn-agent-mode" class="btn btn-ghost" type="button" title="只读讨论：可检索阅读不可写；执行操作：可发起写操作（每一步仍需作者确认）。仅书籍范围可用">只读讨论</button>
+    <span id="agent-scope-status" class="agent-scope-status"></span>
+  </div>
+
+  <main id="agent-main" class="agent-main">
+    <aside class="agent-tools-panel">
+      <div class="tabs agent-side-tabs">
+        <button id="btn-agent-tab-conversations" class="tab active" type="button" data-agent-tab="conversations">会话</button>
+        <button id="btn-agent-tab-resources" class="tab" type="button" data-agent-tab="resources">资源</button>
+      </div>
+      <div id="agent-pane-conversations" class="tab-pane">
+        <div class="pane-head"><span class="pane-title">本范围会话</span></div>
+        <ul id="agent-conversation-list" class="item-list agent-conversation-list"></ul>
+        <div class="pane-head" style="margin-top:14px"><span class="pane-title">助手能力</span></div>
+        <p class="agent-tools-hint">助手会按需自动调用以下工具</p>
+        <ul id="agent-tool-list" class="agent-tool-list"></ul>
+      </div>
+      <div id="agent-pane-resources" class="tab-pane hidden">
+        <div class="pane-head">
+          <span class="pane-title">资源</span>
+          <span class="pane-head-btns">
+            <select id="agent-res-type" class="agent-res-type" title="资源类型（与助手只读工具的同一份受控目录）"></select>
+            <button id="btn-agent-res-refresh" class="btn btn-ghost btn-small" type="button" title="重新读取当前类型的资源列表">刷新</button>
+          </span>
+        </div>
+        <p id="agent-res-hint" class="agent-tools-hint"></p>
+        <ul id="agent-res-list" class="item-list agent-res-list"></ul>
+        <button id="btn-agent-res-more" class="btn btn-ghost btn-small hidden" type="button">加载更多</button>
+      </div>
+    </aside>
+    <section class="panel agent-chat-panel">
+      <div id="agent-legacy-import" class="chat-hint hidden" style="padding:6px 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <span id="agent-legacy-text" style="flex:1;min-width:200px;"></span>
+        <button id="btn-agent-import" class="btn btn-small" type="button">导入到服务端</button>
+        <button id="btn-agent-clean-local" class="btn btn-small btn-ghost hidden" type="button" title="仅在成功导入后出现；清理浏览器本地旧副本，服务端历史不受影响">清理本地副本</button>
+      </div>
+      <!-- S4-05：Agent 台的统一任务卡（任务徽标 / 结果引用 / 工具细节 / 待确认绑定会话） -->
+      <div id="agent-run-card" class="run-card hidden" role="status"></div>
+      <div id="agent-messages" class="chat-messages"></div>
+      <!-- S4-04b：勾选讨论结论 → 存规划笔记 / 创建交接到写作（选择本身不发请求；接受才写入） -->
+      <div id="agent-pick-bar" class="chat-hint hidden" style="padding:6px 10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <span id="agent-pick-count" style="flex:1;min-width:180px;"></span>
+        <button id="btn-agent-save-note" class="btn btn-small" type="button" title="把勾选的讨论结论存成规划笔记草稿：不写正文、不改大纲、不进事件账本">存为规划笔记</button>
+        <button id="btn-agent-create-handoff" class="btn btn-small btn-outline" type="button" title="创建一条交接到写作会话的草案：先在预览里核对材料与来源，接受后才写入">创建交接到写作</button>
+        <button id="btn-agent-pick-clear" class="btn btn-small btn-ghost" type="button">清空选择</button>
+      </div>
+      <form id="agent-form" class="chat-input">
+        <textarea id="agent-text" rows="3" placeholder="例如：这本书埋了哪些伏笔？之前剧情里主角走到哪了？…（Ctrl+Enter 发送）"></textarea>
+        <button type="button" id="btn-agent-stop" class="btn btn-small btn-stop hidden" title="中止当前生成（已生成的部分会保留）">停止</button>
+        <button type="submit" id="btn-agent-send" class="btn btn-primary">发送</button>
+      </form>
+    </section>
+    <aside id="agent-preview-panel" class="panel agent-preview-panel hidden">
+      <div class="pane-head">
+        <span class="pane-title">来源 / 资源预览</span>
+        <button id="btn-agent-preview-close" class="btn btn-ghost btn-small" type="button">收起</button>
+      </div>
+      <div id="agent-preview-body" class="agent-preview-body"></div>
+    </aside>
+  </main>
+</div>
+
+<!-- ============ 阅读 / 精修工作台 ============ -->
+<div id="page-read" class="page hidden">
+  <header class="topbar read-topbar">
+    <div class="topbar-left">
+      <a id="read-return" href="#/" class="btn btn-ghost">← 返回写作页</a>
+      <h1 id="read-book-title" class="book-title"></h1>
+    </div>
+    <nav class="topbar-actions">
+      <span class="read-mode-switch">
+        <button id="read-mode-read" class="btn btn-small mode-on" type="button">阅读</button>
+        <button id="read-mode-edit" class="btn btn-small" type="button">精修</button>
+      </span>
+      <select id="read-theme" class="read-select" title="阅读主题">
+        <option value="light">浅色</option>
+        <option value="sepia">护眼</option>
+        <option value="night">夜间</option>
+      </select>
+      <button id="read-font-minus" class="btn btn-ghost btn-small" type="button" title="缩小字号">A-</button>
+      <button id="read-font-plus" class="btn btn-ghost btn-small" type="button" title="放大字号">A+</button>
+      <button id="read-samples-btn" class="btn btn-ghost btn-small" type="button" title="看本章检出过的 AI 味标本，并复核">错题库</button>
+      <button id="read-health-btn" class="btn btn-ghost btn-small hidden" type="button">AI 味体检</button>
+      <button id="read-toggle-toc" class="btn btn-ghost btn-small" type="button">目录</button>
+      <button id="read-toggle-ai" class="btn btn-ghost btn-small" type="button">AI</button>
+    </nav>
+  </header>
+  <main class="read-main">
+    <aside id="read-toc" class="read-toc">
+      <div class="pane-head"><span class="pane-title">目录</span></div>
+      <ul id="read-toc-list" class="item-list"></ul>
+    </aside>
+    <section id="read-center" class="read-center">
+      <div class="read-chapter-head">
+        <button id="read-prev" class="btn btn-ghost btn-small" type="button">← 上一章</button>
+        <span id="read-chapter-title" class="read-chapter-title" role="button" tabindex="0" title="点击重命名本章（只改标题，不影响正文与定稿状态）"></span>
+        <input id="read-chapter-title-input" class="read-chapter-title-input hidden" type="text" maxlength="120" placeholder="章节标题" autocomplete="off">
+        <button id="read-next" class="btn btn-ghost btn-small" type="button">下一章 →</button>
+      </div>
+      <div id="read-article-wrap" class="read-article-wrap">
+        <article id="read-article" class="read-article"></article>
+        <textarea id="read-editor" class="read-editor hidden" placeholder="在这里逐句精修本章…"></textarea>
+      </div>
+      <div class="read-foot">
+        <button id="read-save" class="btn btn-small hidden" type="button">保存</button>
+        <button id="read-ai-revise" class="btn btn-small btn-outline hidden" type="button">让AI修改选中段</button>
+        <button id="read-apply-reply" class="btn btn-small btn-outline hidden" type="button">用AI回复替换选中</button>
+        <span id="read-word-count" class="word-count"></span>
+      </div>
+    </section>
+    <aside id="read-ai" class="read-ai">
+      <div class="chat-head">
+        <span class="pane-title">AI 侧边栏</span>
+        <span class="pane-head-btns"><button id="read-ai-clear" class="btn btn-ghost btn-small" type="button">清空</button></span>
+      </div>
+      <div id="read-ai-messages" class="chat-messages"></div>
+      <div id="read-ai-quote" class="read-ai-quote hidden">
+        <span id="read-ai-quote-text" class="read-ai-quote-text"></span>
+        <button id="read-ai-quote-clear" class="icon-btn" type="button" title="清除选中段">×</button>
+      </div>
+      <form id="read-ai-form" class="chat-input">
+        <textarea id="read-ai-text" rows="2" placeholder="选中正文后上方会显示选中段；输入你的要求（改写/更简洁/换语气/分析…）发送；未选中时即全书讨论"></textarea>
+        <button type="button" id="read-ai-stop" class="btn btn-small btn-stop hidden" title="中止当前生成（已生成的部分会保留）">停止</button>
+        <button type="submit" id="read-ai-send" class="btn btn-primary">发送</button>
+      </form>
+    </aside>
+  </main>
+</div>
+
+<!-- ============ 通用弹窗 ============ -->
+<div id="modal-mask" class="modal-mask hidden">
+  <div class="modal">
+    <h3 id="modal-title"></h3>
+    <div id="modal-body"></div>
+    <div class="modal-actions">
+      <button id="modal-cancel" class="btn btn-ghost">取消</button>
+      <button id="modal-ok" class="btn btn-primary">确定</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<!-- P6-2（⑨ 切换笔）：此处原为三段 classic 内联承接桩——App 供给段（S5-3）、编辑器
+     bootstrap 段（S5-2，8 名委托 window.MozhenChapterEditor）、聊天 11 名委托桩段（S5-7，
+     委托 window.MozhenBookChat）。全部消费方已改模块直取（App 走 lib/app-runtime.js 单例、
+     编辑器走 chapterEditorApi()、聊天走 chatApi()，路由/壳走静态 import），三段随本片原子删除：
+     页面仅余下方 /app/entry.js 一个模块脚本与静态壳 DOM（驱动依赖的 id/类零改动）。 -->
+<script type="module" src="/entry.jsx"></script>
+</body>
+</html>

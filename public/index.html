@@ -4,7 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>墨砚 · AI 小说工坊</title>
-<link rel="stylesheet" href="style.css?v=20260923a">
+<link rel="stylesheet" href="style.css?v=20260923a" ><!-- P6-3：style.css 为手工维护的静态资产，vite-ignore 让 Vite 跳过该 link 的处理（属性在产物中被移除、href 原值保留） -->
+  <script type="module" crossorigin src="/app/entry.js"></script>
 </head>
 <body>
 
@@ -94,40 +95,12 @@
 
       <div id="tab-state" class="tab-pane hidden">
         <a class="module-workbench-link" data-workbench="ledger">进入故事台账工作台 →</a>
-        <div class="pane-head">
-          <span class="pane-title">人物当前状态</span>
-          <span id="state-characters-time" class="state-time"></span>
-        </div>
-        <textarea id="state-characters" class="outline-textarea" rows="5" placeholder="章总结后由 AI 自动维护，也可手动修改"></textarea>
-        <div class="pane-head" style="margin-top:14px">
-          <span class="pane-title">未回收伏笔</span>
-          <span id="state-foreshadowing-time" class="state-time"></span>
-        </div>
-        <textarea id="state-foreshadowing" class="outline-textarea" rows="5"></textarea>
-        <div class="pane-head" style="margin-top:14px">
-          <span class="pane-title">全书进展摘要</span>
-          <span id="state-book-summary-time" class="state-time"></span>
-        </div>
-        <textarea id="state-book-summary" class="outline-textarea" rows="4"></textarea>
-        <div class="pane-head" style="margin-top:14px">
-          <span class="pane-title"></span>
-          <button id="btn-save-state" class="btn btn-small">保存状态簿</button>
-        </div>
+        <div id="state-book-mount"></div>
       </div>
 
       <div id="tab-outline" class="tab-pane hidden">
         <a class="module-workbench-link" data-workbench="outline">进入大纲工作台 →</a>
-        <div class="pane-head">
-          <span class="pane-title">全书总纲</span>
-          <button id="btn-save-outline" class="btn btn-small">保存</button>
-        </div>
-        <textarea id="master-outline" class="outline-textarea" rows="10" placeholder="全书的主线目标、阶段划分、核心冲突…（卷大纲在章节页各卷的 ✎ 里编辑）"></textarea>
-        <div class="pane-head" style="margin-top:16px">
-          <span class="pane-title">偏离监督</span>
-          <button id="btn-drift-check" class="btn btn-small btn-outline">全书对齐检查</button>
-        </div>
-        <p class="field-hint">每次生成章节总结时会自动检测；这里可手动批量检查当前卷。</p>
-        <ul id="drift-results" class="item-list"></ul>
+        <div id="book-outline-mount"></div>
       </div>
 
       <div id="tab-chapters" class="tab-pane">
@@ -178,7 +151,8 @@
         <button id="btn-ctx-detail" class="btn btn-ghost btn-small" title="查看上下文详细组成（系统提示各节/对话历史/工具结果/输出预留 占比）">明细</button>
         <button id="btn-compress" class="btn btn-ghost btn-small" title="把较早的对话压缩成存档摘要，释放上下文空间">压缩</button>
       </div>
-      <!-- S4-05：统一任务卡（任务徽标 / 保存三态 / 资料更新）。内容由 public/run-status.js 渲染。 -->
+      <!-- S4-05：统一任务卡（任务徽标 / 保存三态 / 资料更新）。内容由 React 侧
+           frontend/lib/run-status.js 经旧名 window.RunStatus 渲染（S5-10 起，legacy 标签已退役）。 -->
       <div id="writing-run-card" class="run-card hidden" role="status"></div>
       <div id="chat-messages" class="chat-messages"></div>
       <form id="chat-form" class="chat-input chat-composer">
@@ -602,56 +576,9 @@
     </div>
   </header>
   <main class="settings-main">
-    <section class="settings-card">
-      <h3>语料概况</h3>
-      <p class="field-hint">这里是朱雀检测判为 AI 味的语句。复核结论决定它是否进入特征提取语料——<strong>确认 AI</strong> 的句子用来总结「AI 腔长什么样」，<strong>确认为人写</strong> 的句子标出检测器的盲区（同样值钱）。未复核的标本不会进入导出，避免污染分析。</p>
-      <div id="stylelab-stats" class="style-lab-stats">载入中…</div>
-    </section>
+    <div id="stylelab-mount"></div>
 
-    <section class="settings-card">
-      <h3>标本列表</h3>
-      <div class="style-lab-filters">
-        <select id="stylelab-verdict" title="按复核状态筛选">
-          <option value="">全部状态</option>
-          <option value="pending">待复核</option>
-          <option value="ai">确认 AI</option>
-          <option value="human">确认为人写</option>
-          <option value="rejected">已废弃</option>
-        </select>
-        <select id="stylelab-chapter" title="按章节筛选"></select>
-        <select id="stylelab-order" title="排序方式">
-          <option value="conf">按 AI 置信度（高→低）</option>
-          <option value="recent">按时间（新→旧）</option>
-          <option value="seen">按重复次数</option>
-          <option value="oldest">按时间（旧→新）</option>
-        </select>
-        <button id="stylelab-export" class="btn btn-small btn-outline" type="button" title="导出 JSONL 语料，供特征提取">导出语料</button>
-        <span id="stylelab-count" class="field-hint"></span>
-      </div>
-      <div id="stylelab-list" class="sample-list"></div>
-    </section>
-
-    <section class="settings-card">
-      <h3>改写工作台（人改比例 → 检测分）</h3>
-      <p class="field-hint">2026-09-14 实测：<strong>事后修饰改不动检测分</strong>——删明喻/拟声/身体模板句、甚至一字不改只合并段落，整篇读数都不动（0.9999）；整章尺度上给不给作家卡也一样（三臂 6 章 0.92~1.00）。真正改变读数的是<strong>人写进去的字</strong>：人类原文 0.0003~0.0159（11/11 段判「人工」），人写 1,500 字 + AI 1,250 字混排 = 0.6082，且人写段被准确认出来。这个工作台按段改写、每改一部分测一次，把「改多少 → 降到哪」画成曲线。<strong>分数只作参考，不设达标线</strong>——为达标而生硬改写会生出新的 AI 味。</p>
-      <div class="curve-bar">
-        <select id="curve-chapter" title="选择要改写的章节"></select>
-        <button id="curve-load" class="btn btn-small btn-outline" type="button">载入本章</button>
-        <button id="curve-measure" class="btn btn-small btn-primary" type="button" disabled>测一次（花 1 次朱雀额度）</button>
-        <label class="curve-auto" title="停笔 3 秒后自动测一次；两次测量至少间隔 5 秒，避免白烧额度">
-          <input type="checkbox" id="curve-auto"> 停笔自动测
-        </label>
-        <button id="curve-reset" class="btn btn-small btn-ghost" type="button" title="只清草稿与曲线，不动章节正文">清空草稿</button>
-      </div>
-      <div id="curve-status" class="field-hint">选一章后点「载入本章」。草稿按书/章自动保存，刷新不丢；段落旁的标签是确定性诊断（能数出来），不是检测分数。</div>
-      <div class="curve-body">
-        <div class="curve-chart-wrap">
-          <svg id="curve-chart" viewBox="0 0 360 200" role="img" aria-label="人改比例与检测分曲线"></svg>
-          <div id="curve-points" class="curve-points"></div>
-        </div>
-        <div id="curve-paras" class="curve-paras"></div>
-      </div>
-    </section>
+    <div id="curve-mount"></div>
   </main>
 </div>
 
@@ -828,43 +755,10 @@
 
 <div id="toast" class="toast hidden"></div>
 
-<script src="chat-event-hub.js?v=20260923a"></script>
-<!-- S4-03：统一导航状态与跨页面草稿保护（工作台/写作页/Agent 台共用一套守卫），必须在各页面脚本之前 -->
-<script src="workspace-state.js?v=20260922a"></script>
-<script src="app.js?v=20260922a"></script>
-<!-- S4-05：统一可见状态（任务卡/保存三态/资料更新）。在各页面脚本之前加载，页面按需调用。 -->
-<script src="run-status.js?v=20260923a"></script>
-<script src="agent.js?v=20260923b"></script>
-<script src="diff.js?v=20260910a"></script>
-<script src="chapter-collapse.js?v=20260911b"></script>
-<script src="chapter-conflict.js?v=20260921b"></script>
-<script src="book-chapters.js?v=20260922a"></script>
-<script src="book-chat.js?v=20260923a"></script>
-<script src="book-outline.js?v=20260923a"></script>
-<script src="book-state.js?v=20260910a"></script>
-<script src="character-relations.js?v=20260910a"></script>
-<script src="character-timeline.js?v=20260910a"></script>
-<script src="character-advisor.js?v=20260910a"></script>
-<script src="list-pager.js?v=20260924a"></script>
-<script src="character-workbench.js?v=20260924a"></script>
-<script src="ledger-workbench.js?v=20260924a"></script>
-<script src="outline-timeline.js?v=20260924b"></script>
-<script src="outline-assistant.js?v=20260924b"></script>
-<script src="outline-workbench.js?v=20260924b"></script>
-<script src="world-workbench.js?v=20260924a"></script>
-<script src="workbench-shell.js?v=20260924a"></script>
-<script src="sidebar-config.js?v=20260910a"></script>
-<script src="style-health.js?v=20260921a"></script>
-<script src="style-lab.js?v=20260914b"></script>
-<script src="segment-targets.js?v=20260914b"></script>
-<script src="rewrite-curve.js?v=20260914b"></script>
-<script src="rewrite-curve-panel.js?v=20260914b"></script>
-<script src="cards.js?v=20260914a"></script>
-<script src="book-read.js?v=20260922a"></script>
-<script src="book.js?v=20260923a"></script>
-<script src="panel-resizer.js?v=20260924a"></script>
-<script src="chat-jump-bottom.js?v=20260924a"></script>
-<script src="focus-mode.js?v=20260924a"></script>
-<script src="profile.js?v=20260925a"></script>
+<!-- P6-2（⑨ 切换笔）：此处原为三段 classic 内联承接桩——App 供给段（S5-3）、编辑器
+     bootstrap 段（S5-2，8 名委托 window.MozhenChapterEditor）、聊天 11 名委托桩段（S5-7，
+     委托 window.MozhenBookChat）。全部消费方已改模块直取（App 走 lib/app-runtime.js 单例、
+     编辑器走 chapterEditorApi()、聊天走 chatApi()，路由/壳走静态 import），三段随本片原子删除：
+     页面仅余下方 /app/entry.js 一个模块脚本与静态壳 DOM（驱动依赖的 id/类零改动）。 -->
 </body>
 </html>

@@ -8,7 +8,7 @@ const fs = require('node:fs');
 
 function loadHub(fetchStub) {
   const context = { window: {}, console, TextDecoder, setTimeout, fetch: fetchStub || (function () { throw new Error('unexpected fetch'); }) };
-  vm.runInNewContext(fs.readFileSync(require.resolve('../public/chat-event-hub.js'), 'utf8'), context);
+  vm.runInNewContext(fs.readFileSync(require.resolve('../public/legacy/chat-event-hub.js'), 'utf8'), context);
   return context.window.ChatEventHub;
 }
 

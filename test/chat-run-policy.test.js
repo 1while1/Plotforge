@@ -215,7 +215,7 @@ test('SSE消费者保留书聊运行状态，SDK最终核验覆盖流中虚报',
   const vm = require('node:vm');
   const fs = require('node:fs');
   const context = { window: {}, console, TextDecoder };
-  vm.runInNewContext(fs.readFileSync(require.resolve('../public/chat-event-hub.js'), 'utf8'), context);
+  vm.runInNewContext(fs.readFileSync(require.resolve('../public/legacy/chat-event-hub.js'), 'utf8'), context);
   const hub = context.window.ChatEventHub;
   const state = hub.createTranscript();
   hub.foldEvent(state, { type: 'done', content: '等确认', run: { status: 'awaiting_confirmation' } });

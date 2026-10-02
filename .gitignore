@@ -11,3 +11,7 @@ data/
 .DS_Store
 Thumbs.db
 nul
+
+# 前端构建产物（npm run build 生成，单一事实源在 frontend/）
+/public/app/
+/public/index.html

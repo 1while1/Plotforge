@@ -1,0 +1,36 @@
+name: 问题反馈
+description: 报告可复现的故障或行为异常
+title: '[Bug] '
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先搜索已有问题。日志和截图请隐去 API Key、个人信息与真实作品正文；安全漏洞请使用 [私密报告入口](https://github.com/1while1/Plotforge/security/advisories/new)。
+  - type: textarea
+    id: behavior
+    attributes:
+      label: 出现了什么问题？
+      description: 请说明实际结果与预期结果。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 如何复现？
+      description: 用简短步骤说明；涉及作品时请使用虚构示例。
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: 版本与环境
+      description: Plotforge 版本或提交、操作系统、Node 版本、浏览器。
+      placeholder: v1.2.0 / Windows 11 / Node 24 / Chrome
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: 补充信息（可选）
+      description: 脱敏后的报错、截图或其他线索。

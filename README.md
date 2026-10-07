@@ -1,5 +1,10 @@
 # Plotforge
 
+[![CI](https://github.com/1while1/Plotforge/actions/workflows/ci.yml/badge.svg)](https://github.com/1while1/Plotforge/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/1while1/Plotforge)](https://github.com/1while1/Plotforge/releases/latest)
+[![License](https://img.shields.io/github/license/1while1/Plotforge)](LICENSE)
+[![Node.js](https://img.shields.io/badge/Node.js-24-417e38)](https://nodejs.org/)
+
 本地优先的 AI 小说创作工坊（墨砚）。一个跑在本机 Node.js 上的长篇小说写作环境：书籍、卷、章节三级结构，接入任意 OpenAI 兼容接口即可开始写作，所有数据保存在本地 SQLite 文件中。
 
 ## 功能
@@ -20,8 +25,10 @@
 
 推荐 Node.js 24.x；也支持 Node.js 22.13+（22.x）或 26+。
 
+从 [最新 Release](https://github.com/1while1/Plotforge/releases/latest) 下载源码并解压，进入项目目录后运行：
+
 ```bash
-npm install
+npm ci
 npm run build   # 前端为 React + Vite，构建产物输出到 public/
 npm start
 ```
@@ -75,6 +82,14 @@ server/    Express 路由、领域服务、上下文管道、LLM 网关、工具
 test/      node:test 单元与集成测试
 tools/     播种、备份、蒸馏等命令行工具
 ```
+
+## 版本与参与
+
+- [正式版本与下载](https://github.com/1while1/Plotforge/releases) · [更新记录](CHANGELOG.md)
+- [问题反馈与功能建议](https://github.com/1while1/Plotforge/issues/new/choose) · [贡献指南](CONTRIBUTING.md)
+- [安全说明与私密漏洞报告](SECURITY.md)
+
+正式版本以 `v主版本.次版本.补丁版本` 标签标记，下载时优先使用最新稳定 Release。当前提供源码，需要按上面的步骤安装依赖并构建。
 
 ## License
 

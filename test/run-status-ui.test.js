@@ -65,10 +65,17 @@ function libSource() {
   const runtimeOrig = readFe('frontend/lib/app-runtime.js');
   const runtime = runtimeOrig.replace('"./chat-event-hub.js"', '"' + dataUrl(hub) + '"');
   assert.notEqual(runtime, runtimeOrig, 'app-runtime.js 的相对 import 说明符未命中替换');
+  const chatRender = readFe('frontend/lib/chat-render.js');
+  assert.equal(chatRender.indexOf('import '), -1, 'chat-render.js 依赖链不漂移（应零 import）');
+  const labelsOrig = readFe('frontend/lib/agent-tool-labels.js');
+  const labels = labelsOrig.replace('"./chat-render.js"', '"' + dataUrl(chatRender) + '"');
+  assert.notEqual(labels, labelsOrig, 'agent-tool-labels.js 的相对 import 说明符未命中替换');
   let src = readFe('frontend/lib/run-status.js');
   const pairs = [
     ['"./app-runtime.js"', dataUrl(runtime)],
     ['"./writing-status.js"', dataUrl(readFe('frontend/lib/writing-status.js'))],
+    // 阶段 4c：工具名中文标签表（agent 页共用），新增相对依赖须登记本清单
+    ['"./agent-tool-labels.js"', dataUrl(labels)],
   ];
   for (const [spec, url] of pairs) {
     assert.equal(src.split(spec).length - 1, 1, 'run-status.js 依赖说明符应恰一处且必须命中：' + spec);

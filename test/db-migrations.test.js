@@ -30,6 +30,7 @@ test('character_hub_v1 migrates legacy data, seeds definitions, and creates one 
       { version: 'conversations_v1' },
       { version: 'corpus_tables_v1' },
       { version: 'ledger_repair_v1' },
+      { version: 'llm_call_conversations_v1' },
       { version: 'llm_call_parts_v1' },
       { version: 'llm_call_schema_v1' },
       { version: 'llm_observability_v1' },
@@ -40,6 +41,7 @@ test('character_hub_v1 migrates legacy data, seeds definitions, and creates one 
       { version: 'polish_history_fk_v1' },
       { version: 'proposal_discard_ledger_v1' },
       { version: 'proposal_governance_v1' },
+      { version: 'read_evidence_v1' },
       { version: 'relock_pending_v1' },
       { version: 'style_packs_v1' },
       { version: 'style_rules_general_v1' },
@@ -115,7 +117,7 @@ test('migration is idempotent and seedBook initializes books created later', asy
   db.close();
   await db.init({ filePath: location.filePath });
 
-  assert.equal(db.get('SELECT COUNT(*) AS n FROM schema_versions').n, 29);
+  assert.equal(db.get('SELECT COUNT(*) AS n FROM schema_versions').n, 31);
   assert.equal(
     db.get('SELECT COUNT(*) AS n FROM state_field_definitions WHERE book_id = ?', [location.bookId]).n,
     8

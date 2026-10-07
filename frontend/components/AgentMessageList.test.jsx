@@ -100,19 +100,21 @@ describe("T6 AgentMessageList（服务端历史纯渲染）", () => {
 		const blocks = container.querySelectorAll("#agent-messages .tool-call");
 		expect(blocks.length).toBe(3);
 		expect(blocks[0].tagName).toBe("DETAILS");
+		// 阶段 4c：助手页对用户隐藏内部工具名，经 agentToolLabel 映射为中文标签
 		expect(blocks[0].querySelector("summary").textContent).toBe(
-			"调用工具 · list_resources（ok）",
+			"调用工具 · 列出受控资源（ok）",
 		);
 		const pre = blocks[0].querySelector("pre.tool-call-io");
 		expect(pre).not.toBeNull();
 		expect(pre.textContent).toBe(`${"r".repeat(800)}…`);
 		expect(blocks[0].querySelectorAll("pre").length).toBe(1);
 		expect(blocks[1].querySelector("summary").textContent).toBe(
-			"调用工具 · grep_chapters（failed）",
+			"调用工具 · 关键词查全文（failed）",
 		);
 		expect(blocks[1].querySelector("pre")).toBeNull();
+		// 空工具名回落「未知操作」（agentToolLabel 与 toolLabel 同语义）
 		expect(blocks[2].querySelector("summary").textContent).toBe(
-			"调用工具 · （）",
+			"调用工具 · 未知操作（）",
 		);
 		expect(blocks[2].querySelector("pre")).toBeNull();
 	});

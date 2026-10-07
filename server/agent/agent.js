@@ -226,7 +226,11 @@ async function runAgent(messages, res, context = {}) {
               readCode: verdict.code, requiredReads: verdict.required, readReceipts: readReceipts.slice() };
           }
         }
-        const final = runPolicy.finalizeText(emittedText, gate.state || { status: 'finished', steps: gate.budget.steps }, { verifiedWrite: context.verifiedWrite, settledAction: context.settledAction });
+        const final = runPolicy.finalizeText(emittedText, gate.state || { status: 'finished', steps: gate.budget.steps }, {
+          verifiedWrite: context.verifiedWrite,
+          settledAction: context.settledAction,
+          approvedWrites: require('../chat/write-history').approvedWrites(context.conversationId),
+        });
         // S2-04：终态统一裁决——控制态定格（待确认/暂停/失败）保留，只复核将判 finished 的事实
         const norm = runPolicy.normalizeFinish({
           finishReason,

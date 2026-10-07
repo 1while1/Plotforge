@@ -424,7 +424,7 @@ function sessionUsageEstimate(bookId, messages) {
 async function callLLMFull(messages, { maxTokens = 4000, temperature = 0.7, signal, meta } = {}) {
   const { baseUrl, apiKey, model } = llmConfig();
   const t0 = Date.now();
-  const logBase = { bookId: meta && meta.bookId, scope: (meta && meta.scope) || 'llm', model, baseUrl, outputReserve: maxTokens };
+  const logBase = { bookId: meta && meta.bookId, conversationId: meta && meta.conversationId, scope: (meta && meta.scope) || 'llm', model, baseUrl, outputReserve: maxTokens };
   try {
     // 传输抖动/超时由 postChatJson 统一重试（2026-09-30 抗短连：res.json() 响应体读取一并入圈）；
     // 空正文按 R02 空输出契约显式失败（不在这里重发）
@@ -592,7 +592,9 @@ async function buildSystemPrompt(book, chapterId, query) {
 // finish_reason=stop，续写兜底不触发，那一章一个字都没落库。
 // 现改为带方括号与字数的机器文本，模型不会把它当成叙事句式模仿。
 // 注意：llm.js 与 routes/chat.js 的估算口径必须一致（A-13），两边共用本函数，勿各写各的。
-const HISTORY_OLD_MAX_CHARS = 300;
+const {
+  HISTORY_MESSAGE_LIMIT, HISTORY_RECENT_FULL_COUNT, HISTORY_OLD_MAX_CHARS,
+} = require('./context/history-budget');
 function trimHistoryText(text, maxChars = HISTORY_OLD_MAX_CHARS) {
   const s = typeof text === 'string' ? text : '';
   if (s.length <= maxChars) return s;
@@ -602,29 +604,22 @@ function trimHistoryText(text, maxChars = HISTORY_OLD_MAX_CHARS) {
 // S3-03：历史与工具事实按会话取（conversationId 由 chat 路由解析后传入）；null 为
 // 防御兜底（按书取，等价旧行为）——生产路径的列表/stream/压缩估算全部先解析会话再进来，
 // 避免「压缩估算与实际发送用两份历史口径」（A-13 原则在会话维度延续）。
-async function buildChatMessages(book, userContent, chapterId, historyLimit = 12, conversationId = null) {
-  const history = conversationId
-    ? db.all(
-        'SELECT role, content FROM messages WHERE conversation_id = ? AND COALESCE(compressed, 0) != 1 ORDER BY id DESC LIMIT ?',
-        [conversationId, historyLimit]
-      ).reverse()
-    : db.all(
-        'SELECT role, content FROM messages WHERE book_id = ? AND COALESCE(compressed, 0) != 1 ORDER BY id DESC LIMIT ?',
-        [book.id, historyLimit]
-      ).reverse();
+async function buildChatMessages(book, userContent, chapterId, historyLimit = HISTORY_MESSAGE_LIMIT, conversationId = null) {
+  const history = require('./conversations/history-selection').selectHistory({ conversationId, bookId: book.id, limit: historyLimit });
   const ctx = { book, chapterId, db, query: userContent, systemTokenBudget: systemPromptTokenBudget() };
   // 用 assembleDetailed：逐 Provider 组装层计量随请求返回，供调用台账落库（parts_json）与校准细分
   const assembled = await context.assembleDetailed(ctx);
   const factRows = conversationId
-    ? db.all('SELECT tools_json FROM messages WHERE conversation_id = ? AND tools_json IS NOT NULL ORDER BY id DESC LIMIT 12', [conversationId]).reverse()
-    : db.all('SELECT tools_json FROM messages WHERE book_id = ? AND tools_json IS NOT NULL ORDER BY id DESC LIMIT 12', [book.id]).reverse();
+    ? db.all('SELECT tools_json FROM messages WHERE conversation_id = ? AND tools_json IS NOT NULL ORDER BY id DESC LIMIT ?', [conversationId, HISTORY_MESSAGE_LIMIT]).reverse()
+    : db.all('SELECT tools_json FROM messages WHERE book_id = ? AND tools_json IS NOT NULL ORDER BY id DESC LIMIT ?', [book.id, HISTORY_MESSAGE_LIMIT]).reverse();
   const toolHistory = require('./chat/tool-history').historyFacts(factRows, book.id, ctx.narrativeScope);
   const system = assembled.text + (toolHistory ? '\n<tool_history>\n' + context.escapeXml(toolHistory) + '\n</tool_history>' : '');
 
-  // 最近 4 条保留全文，更早的长消息截断（标记样式见 trimHistoryText）
+  // 最近的消息保留全文，更早的长消息截断（标记样式见 trimHistoryText）
+  const recentStart = history.length - HISTORY_RECENT_FULL_COUNT;
   const trimmed = history.map((m, i) => {
-    const isRecent = i >= history.length - 4;
-    const content = isRecent ? m.content : trimHistoryText(m.content);
+    const isRecent = i >= recentStart;
+    const content = (m.summary || isRecent) ? m.content : trimHistoryText(m.content);
     return { role: m.role, content };
   });
 

@@ -51,6 +51,7 @@ import {
 	parseResponseError,
 	waitRunEvents,
 } from "../lib/chat-event-hub.js";
+import { scrollToBottom } from "../lib/scroll-follow.js";
 
 // 消息来源标注（B5，:289 逐字）：侧边栏发的消息在库里标 source='read'。
 const SOURCE_LABELS = {
@@ -59,6 +60,16 @@ const SOURCE_LABELS = {
 	agent: "助手",
 	system: "系统",
 };
+
+// 与 styles/pages/read.css 的抽屉断点一致
+const NARROW_READ = "(max-width: 860px)";
+function startsNarrow() {
+	try {
+		return Boolean(globalThis.matchMedia?.(NARROW_READ).matches);
+	} catch (_e) {
+		return false;
+	}
+}
 
 function wordCount(text) {
 	return String(text || "").replace(/\s/g, "").length;
@@ -180,8 +191,9 @@ export default function ReadPage({ bookId, chapterId }) {
 			titleEditing: false,
 			titleDraft: "",
 			wordText: "共 0 字",
-			tocCollapsed: false,
-			aiCollapsed: false,
+			// 窄屏两侧栏是盖在正文上的抽屉（read.css），首次进入默认收起，免得一进页就挡住正文
+			tocCollapsed: startsNarrow(),
+			aiCollapsed: startsNarrow(),
 			aiText: "",
 		};
 	}
@@ -490,7 +502,7 @@ export default function ReadPage({ bookId, chapterId }) {
 		bubble.textContent = text || "";
 		div.appendChild(bubble);
 		wrap.appendChild(div);
-		wrap.scrollTop = wrap.scrollHeight;
+		scrollToBottom(wrap);
 		return bubble;
 	}
 
@@ -1060,7 +1072,7 @@ export default function ReadPage({ bookId, chapterId }) {
 							← 上一章
 						</button>
 						{/* 同 id 同 tag 同 class 等值 index.html:708 静态壳（legacy :672-675 亦为 span＋onclick/onkeydown）；
-						    public/style.css:1894 的选择器是 .read-chapter-title[role="button"]，换 <button> 即改壳与样式命中面 */}
+						    styles/pages/read.css 的选择器是 .read-chapter-title[role="button"]，换 <button> 即改壳与样式命中面 */}
 						{/* biome-ignore lint/a11y/useSemanticElements: 等值静态壳 span role=button（:708/:672-675） */}
 						<span
 							id="read-chapter-title"
@@ -1089,6 +1101,7 @@ export default function ReadPage({ bookId, chapterId }) {
 							value={s.titleDraft}
 							onChange={(e) => {
 								s.titleDraft = e.target.value;
+								rerender();
 							}}
 							onKeyDown={(e) => {
 								if (e.key === "Enter") {
@@ -1200,7 +1213,7 @@ export default function ReadPage({ bookId, chapterId }) {
 						className={`read-ai-quote${s.pendingSelection ? "" : " hidden"}`}
 					>
 						{/* ISSUE-4 整改：title 同步引用全文（等值 legacy :556-558 `t.title = sel.text`）——
-						    public/style.css:1984-1990 的 -webkit-line-clamp:3 会截断长引用，title 是唯一看全途径 */}
+						    styles/pages/read.css 的 -webkit-line-clamp:3 会截断长引用，title 是唯一看全途径 */}
 						<span
 							id="read-ai-quote-text"
 							className="read-ai-quote-text"
@@ -1236,8 +1249,11 @@ export default function ReadPage({ bookId, chapterId }) {
 							rows={2}
 							placeholder="选中正文后上方会显示选中段；输入你的要求（改写/更简洁/换语气/分析…）发送；未选中时即全书讨论"
 							value={s.aiText}
+							// 受控输入必须随值重渲：只改 s 不重渲，React 会在每次输入后把框回填成旧值
+							//（表现为打不进字；中文输入法组字被打断时，选词的数字键会以「1」落进框里）
 							onChange={(e) => {
 								s.aiText = e.target.value;
+								rerender();
 							}}
 						/>
 						<button

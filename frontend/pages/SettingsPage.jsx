@@ -1,16 +1,17 @@
 // S5-3（Plan §2.4.6）：SettingsPage 设置页整页 React——public/legacy/app.js:286-671 的等值移植
-// （静态壳镜像 index.html:272-427，34 个 id 逐一对位）。
+// （静态壳镜像 index.html:272-427，29 个 id 逐一对位）。
 //
-// 等值要点（行号＝legacy app.js）：
-// - CHANNELS/detectChannel :286-298；keyStash/stashKey :301-309（localStorage channel_keys，坏 JSON 容错）。
+// 等值要点（行号＝legacy app.js；渠道/Key 部分已移出本页，改由 ModelProfilesPanel 的 BYOK 服务商模型接管，
+// Key 存服务端库、页面只见掩码）：
+// - 渠道/Key 段（CHANNELS/detectChannel :286-298、keyStash/stashKey :301-309、渠道切换 :529-541）
+//   已移出本页：BYOK 服务商由 frontend/components/ModelProfilesPanel.jsx 接管，Key 存服务端不落浏览器。
 // - setCtxHint 四分支文案与 title :313-329（钳制/渠道已报/渠道未报/未拉取）。
-// - renderSettings :331-372：回填顺序与掩码 placeholder 语义（api_key_set? '已配置 '+masked+'，留空则保持不变'
-//   : '未配置，粘贴 API Key'；AnySearch 同口径）；system_prompt 缺省回填 default_system_prompt 并置 isDefault；
+// - renderSettings :331-372：回填顺序与掩码 placeholder 语义（AnySearch 与作家仓库同口径）；
+//   system_prompt 缺省回填 default_system_prompt 并置 isDefault；
 //   renderStyleLab 旁路 :376-394（GET /api/style-lab/config 读不到不打断设置页）。
-// - refreshCtxWindowField :508-517（?model= 覆盖，不落库）。
-// - 渠道切换 :530-541（custom 不动/stash 回填/free 清空/无 stash 提示「该渠道本地未记住 Key，请粘贴」）。
-// - 保存设置 :551-576（六字段＋disable_thinking_models 无条件发、key 填了才发、free 渠道 api_key=''＋
-//   clear_api_key=true、成功后 stashKey＋refreshCtxWindowField＋toast「已保存」＋重拉）。
+// - refreshCtxWindowField :508-517（?model= 覆盖，不落库；BYOK 后一律不带 ?model=，以服务端活动模型为准）。
+// - 保存设置 :551-576（三字段＋disable_thinking_models 无条件发、成功后 refreshCtxWindowField＋
+//   toast「已保存」＋重拉；渠道/Key 语义已移出，见 ModelProfilesPanel）。
 // - 保存搜索 :598-615（四字段＋key 条件）；保存提示词 :579-588（isDefault==='1' 发空串）；
 //   重置提示词 :591-595；作家仓库保存 :656-671（mode＋layer '1'/'0'＋key 条件）。
 // - 三测试按钮 :618-691（按钮态「测试中…/检测中…」与结果文案逐字＋finally 复位）；
@@ -21,30 +22,12 @@
 
 import { useCallback, useEffect } from "react";
 import { createRoot } from "react-dom/client";
+import ModelProfilesPanel from "../components/ModelProfilesPanel.jsx";
 import { getApp } from "../lib/app-runtime.js";
 
 let visit = 0;
 // 等值 legacy app.js:10 的模块级 defaultSystemPrompt（重置提示词回填用）
 let defaultSystemPrompt = "";
-
-const CHANNELS = {
-	paid: {
-		base_url: "https://opencode.ai/zen/go/v1",
-		model: "deepseek-v4-flash",
-	},
-	free: {
-		base_url: "https://opencode.ai/zen/v1",
-		model: "deepseek-v4-flash-free",
-	},
-	agnes: {
-		base_url: "https://apihub.agnes-ai.com/v1",
-		model: "agnes-2.5-flash",
-	},
-	stepfun: {
-		base_url: "https://api.stepfun.com/step_plan/v1",
-		model: "step-3.7-flash",
-	},
-};
 
 function app() {
 	return getApp();
@@ -52,27 +35,6 @@ function app() {
 
 function $(id) {
 	return document.getElementById(id);
-}
-
-function detectChannel(baseUrl) {
-	for (const key of Object.keys(CHANNELS)) {
-		if (baseUrl === CHANNELS[key].base_url) return key;
-	}
-	return "custom";
-}
-
-function keyStash() {
-	try {
-		return JSON.parse(localStorage.getItem("channel_keys") || "{}");
-	} catch (_e) {
-		return {};
-	}
-}
-
-function stashKey(channel, apiKey) {
-	const stash = keyStash();
-	stash[channel] = apiKey;
-	localStorage.setItem("channel_keys", JSON.stringify(stash));
 }
 
 function setCtxHint(s) {
@@ -95,12 +57,8 @@ function setCtxHint(s) {
 
 export default function SettingsPage() {
 	const refreshCtxWindowField = useCallback(async () => {
-		const curModel = $("set-model").value.trim() || "";
 		try {
-			const data = await app().api(
-				"GET",
-				`/api/settings${curModel ? `?model=${encodeURIComponent(curModel)}` : ""}`,
-			);
+			const data = await app().api("GET", "/api/settings");
 			const s = data.settings || {};
 			$("set-context-window").value = s.context_window || "";
 			$("set-context-window").placeholder = String(
@@ -139,14 +97,6 @@ export default function SettingsPage() {
 			const data = await app().api("GET", "/api/settings");
 			const s = data.settings || {};
 			defaultSystemPrompt = s.default_system_prompt || "";
-			$("set-base-url").value = s.base_url || "";
-			// 后端不再回传明文密钥：输入框保持空白，用 placeholder 告知掩码与「留空即不变更」的语义
-			const keyEl = $("set-api-key");
-			keyEl.value = "";
-			keyEl.placeholder = s.api_key_set
-				? `已配置 ${s.api_key_masked || ""}，留空则保持不变`
-				: "未配置，粘贴 API Key";
-			$("set-model").value = s.model || "";
 			const asEl = $("set-anysearch-key");
 			asEl.value = "";
 			asEl.placeholder = s.anysearch_api_key_set
@@ -164,7 +114,6 @@ export default function SettingsPage() {
 			setCtxHint(s);
 			$("set-compress-ratio").value = s.compression_ratio || "0.8";
 			$("set-disable-thinking").value = s.disable_thinking_models || "";
-			$("set-channel").value = detectChannel(s.base_url || "");
 			const ta = $("set-system-prompt");
 			if (s.system_prompt) {
 				ta.value = s.system_prompt;
@@ -181,51 +130,17 @@ export default function SettingsPage() {
 
 	useEffect(() => {
 		renderSettings();
-		// set-model 手改/手填后，窗口解析值跟随刷新（等值 :544-548 的 change 监听＋dataset 幂等）
-		const modelInput = $("set-model");
-		const onModelChange = () => {
-			refreshCtxWindowField();
-		};
-		if (modelInput && !modelInput.dataset.ctxBound) {
-			modelInput.dataset.ctxBound = "1";
-			modelInput.addEventListener("change", onModelChange);
-		}
-	}, [renderSettings, refreshCtxWindowField]);
-
-	async function onChannelChange(e) {
-		const ch = e.target.value;
-		if (ch === "custom") return;
-		$("set-base-url").value = CHANNELS[ch].base_url;
-		$("set-model").value = CHANNELS[ch].model;
-		const stash = keyStash()[ch] || "";
-		const el = $("set-api-key");
-		el.value = ch === "free" ? "" : stash;
-		// 本地没记住该渠道的 Key 时明说，避免用户误以为「留空就会沿用服务端旧 Key」而发错渠道
-		if (ch !== "free" && !stash)
-			el.placeholder = "该渠道本地未记住 Key，请粘贴";
-		refreshCtxWindowField();
-	}
+	}, [renderSettings]);
 
 	async function onSaveSettings() {
 		try {
 			const settings = {
-				base_url: $("set-base-url").value.trim(),
-				model: $("set-model").value.trim(),
 				context_window: $("set-context-window").value.trim(),
 				compression_ratio: $("set-compress-ratio").value.trim(),
 				// 深度思考开关：留空 = 不干预（与历史行为一致），故无条件发送空串是安全的
 				disable_thinking_models: $("set-disable-thinking").value.trim(),
 			};
-			// 密钥字段：填了才发送；留空则不发该字段（后端视为不变更）。
-			const ch = $("set-channel").value;
-			const keyVal = $("set-api-key").value.trim();
-			if (keyVal) settings.api_key = keyVal;
-			else if (ch === "free") {
-				settings.api_key = "";
-				settings.clear_api_key = true;
-			}
 			await app().api("PUT", "/api/settings", settings);
-			if (ch !== "custom" && ch !== "free" && keyVal) stashKey(ch, keyVal);
 			refreshCtxWindowField();
 			app().toast("已保存");
 			renderSettings();
@@ -370,64 +285,7 @@ export default function SettingsPage() {
 			<main className="settings-main">
 				<section className="settings-card">
 					<h3>模型接口</h3>
-					<label className="field">
-						<span>渠道</span>
-						<select id="set-channel" onChange={onChannelChange}>
-							<option value="paid">付费渠道（zen/go · 需要 API Key）</option>
-							<option value="free">免费渠道（zen · 无需 API Key）</option>
-							<option value="agnes">Agnes（apihub · 需要 API Key）</option>
-							<option value="stepfun">
-								StepFun 官方（step_plan · 需要 API Key）
-							</option>
-							<option value="custom">自定义</option>
-						</select>
-					</label>
-					<label className="field">
-						<span>Base URL</span>
-						<input
-							id="set-base-url"
-							type="text"
-							placeholder="https://apihub.agnes-ai.com/v1"
-						/>
-					</label>
-					<label className="field">
-						<span>
-							API Key <small id="api-key-hint">（免费渠道可留空）</small>
-						</span>
-						<input id="set-api-key" type="text" placeholder="sk-…" />
-					</label>
-					<label className="field">
-						<span>模型</span>
-						<input
-							id="set-model"
-							type="text"
-							list="model-options"
-							placeholder="deepseek-v4-flash"
-						/>
-						<datalist id="model-options">
-							<option value="deepseek-v4-flash">
-								付费 · DeepSeek V4 Flash
-							</option>
-							<option value="deepseek-v4-flash-free">
-								免费 · DeepSeek V4 Flash
-							</option>
-							<option value="mimo-v2.5-free">免费 · MiMo V2.5</option>
-							<option value="nemotron-3-ultra-free">
-								免费 · Nemotron 3 Ultra
-							</option>
-							<option value="north-mini-code-free">
-								免费 · North Mini Code
-							</option>
-							<option value="agnes-2.5-flash">Agnes · 2.5 Flash（快）</option>
-							<option value="agnes-2.5-pro">Agnes · 2.5 Pro（强）</option>
-							<option value="agnes-2.0-flash">Agnes · 2.0 Flash</option>
-							<option value="agnes-2.5-pro-alpha">Agnes · 2.5 Pro Alpha</option>
-							<option value="step-3.7-flash">
-								StepFun · 3.7 Flash（蒸馏同款，实测可跑）
-							</option>
-							<option value="step-3.5-flash">StepFun · 3.5 Flash</option>
-						</datalist>
-					</label>
+					<ModelProfilesPanel onActivated={renderSettings} />
 					<label className="field">
 						<span>
 							上下文窗口大小{" "}

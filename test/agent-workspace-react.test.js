@@ -42,13 +42,27 @@ function loadLibs() {
   if (!modsPromise) {
     const scopeSrc = readLib('agent-scope.js');
     const scopeUrl = dataUrl(scopeSrc);
-    const actionsUrl = dataUrl(readLib('agent-actions.js'));
+    // 阶段 4c：agentToolLabel 标签表（agent-tool-labels.js → chat-render.js，后者零 import）
+    const chatRenderUrl = dataUrl(readLib('chat-render.js'));
+    const labelsSrc = readLib('agent-tool-labels.js').replace(
+      '"./chat-render.js"',
+      `"${chatRenderUrl}"`,
+    );
+    assert.notEqual(labelsSrc, readLib('agent-tool-labels.js'), 'agent-tool-labels.js 的 chat-render 说明符未命中替换');
+    const labelsUrl = dataUrl(labelsSrc);
+    const actionsSrc = readLib('agent-actions.js').replace(
+      '"./agent-tool-labels.js"',
+      `"${labelsUrl}"`,
+    );
+    assert.notEqual(actionsSrc, readLib('agent-actions.js'), 'agent-actions.js 的 labels 说明符未命中替换');
+    const actionsUrl = dataUrl(actionsSrc);
     const rewrite = (src, file) => {
       let out = src;
       let hits = 0;
       for (const [spec, url] of [
         ['"./agent-scope.js"', `"${scopeUrl}"`],
         ['"./agent-actions.js"', `"${actionsUrl}"`],
+        ['"./agent-tool-labels.js"', `"${labelsUrl}"`],
       ]) {
         hits += out.split(spec).length - 1;
         out = out.split(spec).join(url);
@@ -66,7 +80,7 @@ function loadLibs() {
       resources: await import(dataUrl(rewrite(readLib('agent-resources.js'), 'agent-resources.js'))),
       handoff: await import(dataUrl(readLib('agent-handoff.js'))),
       pending: await import(dataUrl(readLib('agent-pending.js'))),
-      actions: await import(dataUrl(readLib('agent-actions.js'))),
+      actions: await import(dataUrl(actionsSrc)),
       round: await import(dataUrl(rewrite(readLib('agent-round.js'), 'agent-round.js'))),
     }))();
   }

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>墨砚 · AI 小说工坊</title>
-<link rel="stylesheet" href="style.css?v=20260923a" vite-ignore><!-- P6-3：style.css 为手工维护的静态资产，vite-ignore 让 Vite 跳过该 link 的处理（属性在产物中被移除、href 原值保留） -->
+<!-- 样式全部经 entry.jsx → styles/app.css 进构建（UI 优化阶段 5 起原 style.css 并入 styles/base.css），此处不再手工挂 link -->
 </head>
 <body>
 
@@ -53,37 +53,31 @@
 
 <!-- ============ 书籍工作台 ============ -->
 <div id="page-book" class="page hidden">
-  <header class="topbar">
-    <div class="topbar-left">
-      <a href="#/" class="btn btn-ghost" title="返回书架">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M19 12H5m7-7-7 7 7 7"/></svg>
-        书架
-      </a>
-      <h1 id="book-title" class="book-title"></h1>
+  <!-- UI 优化阶段 1（工作台 B）：全局导航栏，内容由 frontend/shell/BookRail.jsx 渲染 -->
+  <nav id="book-rail" class="book-rail" aria-label="全局导航"></nav>
+  <div class="book-main">
+  <header class="topbar book-topbar">
+    <h1 id="book-title" class="book-title"></h1>
+    <a href="#/" class="book-crumb-link" title="返回书架">书架</a>
+    <span class="book-crumb-sep" aria-hidden="true">›</span>
+    <!-- S4-02：当前书 / 当前章 / 当前写作会话 / 保存状态始终可见（在可折叠侧栏之外）；阶段 1 起并入顶栏，书/章即面包屑 -->
+    <div id="writing-status-bar" class="writing-status-bar" role="status">
+      <span class="ws-chip ws-chip-book"><span class="ws-label">书</span><span id="writing-status-book">—</span></span>
+      <span class="ws-chip ws-chip-chapter"><span class="ws-label">当前章</span><span id="writing-status-chapter">未选择章节</span></span>
+      <span class="ws-chip ws-chip-conv"><span class="ws-label">写作会话</span><span id="writing-status-conversation">（默认：历史对话）</span></span>
+      <span class="ws-chip ws-chip-save"><span class="ws-label">保存状态</span><span id="writing-status-save">已保存</span></span>
     </div>
     <nav class="topbar-actions">
-      <button id="btn-toggle-left-panel" class="btn btn-ghost" type="button" title="收起/展开左侧创作导航（章节/大纲/状态/世界观/人物）；收起后编辑器与写作助手不受影响，当前书/章/会话/保存状态始终显示在上方状态条">收起侧栏</button>
       <button id="btn-mode" class="btn btn-ghost" title="协作模式：AI 拿不准时会停下来问你；直接写模式：AI 直接成文">协作模式</button>
-      <a href="#/profile" class="btn btn-ghost" title="个人中心：本书提示词 / 作家卡 / 错题库">个人中心</a>
-      <a href="#/settings" class="btn btn-ghost">设置</a>
+      <button id="btn-toggle-left-panel" class="btn btn-ghost book-panel-toggle" type="button" aria-label="收起侧栏" title="收起/展开左侧创作导航（章节/大纲/状态/世界观/人物）；收起后编辑器与写作助手不受影响，当前书/章/会话/保存状态始终显示在顶栏"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
+      <button id="btn-toggle-chat-panel" class="btn btn-ghost book-panel-toggle" type="button" aria-label="收起写作助手" title="收起/展开右侧写作助手；收起后对话不中断，展开即恢复"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg></button>
     </nav>
   </header>
-
-  <!-- S4-02：当前书 / 当前章 / 当前写作会话 / 保存状态始终可见（在可折叠侧栏之外） -->
-  <div id="writing-status-bar" class="writing-status-bar" role="status">
-    <span class="ws-chip"><span class="ws-label">书</span><span id="writing-status-book">—</span></span>
-    <span class="ws-chip"><span class="ws-label">当前章</span><span id="writing-status-chapter">未选择章节</span></span>
-    <span class="ws-chip"><span class="ws-label">写作会话</span><span id="writing-status-conversation">（默认：历史对话）</span></span>
-    <span class="ws-chip"><span class="ws-label">保存状态</span><span id="writing-status-save">已保存</span></span>
-  </div>
 
   <main id="book-workbench" class="workbench">
     <!-- 左栏：章节 / 世界观 / 人物 -->
     <aside id="panel-left" class="panel panel-left">
-      <div class="sidebar-toolbar">
-        <span>创作导航</span>
-        <button id="btn-sidebar-config" class="btn btn-ghost btn-small" type="button">调整侧栏</button>
-      </div>
+      <!-- 阶段 2：页签切换交给左侧导航栏（BookRail 点这里的 .tab），这一行只做视觉隐藏，节点与 data-tab 契约保留 -->
       <div class="tabs">
         <button class="tab active" data-tab="chapters">章节</button>
         <button class="tab" data-tab="outline">大纲</button>
@@ -103,15 +97,20 @@
       </div>
 
       <div id="tab-chapters" class="tab-pane">
-        <div class="pane-head">
+        <div class="pane-head chapter-pane-head">
+          <span class="pane-title">章节<span id="chapter-total" class="chapter-total"></span></span>
           <span class="pane-head-btns">
-            <button id="btn-add-chapter" class="btn btn-small">+ 章节</button>
-            <button id="btn-add-volume" class="btn btn-small">+ 分卷</button>
-            <button id="btn-open-read" class="btn btn-small btn-outline" title="在独立页面阅读 / 精修本书">阅读/精修</button>
-            <button id="btn-chapter-recycle" class="btn btn-small btn-outline" title="查看已删除的章节并恢复">回收站</button>
+            <button id="btn-add-chapter" class="btn btn-small pane-icon-btn" type="button" aria-label="新章节" title="新建章节"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+            <button id="btn-add-volume" class="btn btn-small pane-icon-btn" type="button" aria-label="新分卷" title="新建分卷"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h18M3 12h18M3 17h10M18 15v6M15 18h6"/></svg></button>
+            <button id="btn-open-read" class="btn btn-small pane-icon-btn" type="button" aria-label="阅读/精修" title="在独立页面阅读 / 精修本书"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 5h6a4 4 0 0 1 4 4v11a3 3 0 0 0-3-3H2zM22 5h-6a4 4 0 0 0-4 4v11a3 3 0 0 1 3-3h7z"/></svg></button>
+            <button id="btn-chapter-recycle" class="btn btn-small pane-icon-btn" type="button" aria-label="回收站" title="查看已删除的章节并恢复"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>
+            <button id="btn-sidebar-config" class="btn btn-small pane-icon-btn" type="button" aria-label="调整侧栏" title="调整侧栏模块的顺序、显隐与速览字段"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg></button>
           </span>
         </div>
+        <!-- 筛选条、目录行与底部字数统计都由 ChapterEditorPanel 经 portal 渲染（同一份目录模型） -->
+        <div id="chapter-filter" class="chapter-filter"></div>
         <ul id="chapter-list" class="item-list"></ul>
+        <div id="chapter-foot" class="chapter-foot"></div>
       </div>
 
       <div id="tab-world" class="tab-pane hidden">
@@ -133,42 +132,7 @@
       </div>
     </aside>
 
-    <!-- 中栏：AI 对话 -->
-    <section class="panel panel-chat">
-      <div class="chat-head">
-        <span class="pane-title">写作助手</span>
-        <span class="pane-head-btns">
-          <select id="writing-conversation-select" title="切换写作会话（历史按任务隔离；默认为本书历史对话）"></select>
-          <button id="btn-new-writing-conv" class="btn btn-ghost btn-small" title="开始一个新的写作会话（原会话历史保留）">新会话</button>
-          <button id="btn-open-agent-discuss" class="btn btn-ghost btn-small" title="到 AI 助手为本书新开一个整体讨论专题：只带这本书与当前章（可选人物），默认不带写作对话历史；从助手返回后还原同一会话同一章">另开整体讨论</button>
-          <button id="btn-clear-chat" class="btn btn-ghost btn-small" title="清空当前会话的对话记录">清空</button>
-        </span>
-      </div>
-      <div class="ctx-meter" id="ctx-meter" title="上下文窗口占用（真实值来自最近一次对话的 usage；未对话时为估算）">
-        <div class="ctx-bar"><div class="ctx-fill" id="ctx-fill"></div></div>
-        <span class="ctx-text" id="ctx-text">上下文 — / —</span>
-        <button id="btn-ctx-detail" class="btn btn-ghost btn-small" title="查看上下文详细组成（系统提示各节/对话历史/工具结果/输出预留 占比）">明细</button>
-        <button id="btn-compress" class="btn btn-ghost btn-small" title="把较早的对话压缩成存档摘要，释放上下文空间">压缩</button>
-      </div>
-      <!-- S4-05：统一任务卡（任务徽标 / 保存三态 / 资料更新）。内容由 React 侧
-           frontend/lib/run-status.js 经旧名 window.RunStatus 渲染（S5-10 起，legacy 标签已退役）。 -->
-      <div id="writing-run-card" class="run-card hidden" role="status"></div>
-      <div id="chat-messages" class="chat-messages"></div>
-      <form id="chat-form" class="chat-input chat-composer">
-        <div class="composer-card">
-          <textarea id="chat-text" rows="3" placeholder="和 AI 聊聊剧情，或让它续写正文…（Ctrl+Enter 发送）"></textarea>
-          <div class="composer-foot">
-            <button type="button" id="btn-consult" class="consult-pill" title="参谋模式：只出剧情走向/人物行为建议，不写正文">参谋</button>
-            <span class="composer-ops">
-              <button type="button" id="btn-chat-stop" class="btn btn-small btn-stop hidden" title="中止当前生成（已生成的部分会保留）">停止</button>
-              <button type="submit" id="btn-send" class="btn btn-primary">发送</button>
-            </span>
-          </div>
-        </div>
-      </form>
-    </section>
-
-    <!-- 右栏：章节编辑器 -->
+    <!-- 中栏：章节编辑器 -->
     <section class="panel panel-editor">
       <div id="editor-empty" class="empty-state">
         <p>未选择章节</p>
@@ -186,38 +150,92 @@
           </div>
           <div id="diff-body" class="diff-body"></div>
         </div>
+        <!-- 阶段 2（样稿 B）：工具条置顶（状态徽章/字数进度由 React 渲染），正文区为居中文档 -->
+        <div class="editor-toolbar">
+          <div class="editor-actions">
+            <button id="btn-polish-chapter" class="btn btn-small btn-outline">润色本章</button>
+            <button id="btn-gen-summary" class="btn btn-small btn-outline">生成总结</button>
+            <button id="btn-save-chapter" class="btn btn-small">保存</button>
+            <button id="btn-enter-refine" class="btn btn-small refine-btn" type="button" title="在阅读/精修页打开本章，逐段打磨字句">精修</button>
+            <button id="btn-lock-chapter" class="btn btn-small btn-outline" title="定稿：作者确认本章不再修改，定稿后内容才会进入向量检索（供 AI 召回旧剧情细节）">定稿</button>
+          </div>
+        </div>
         <div id="relock-banner" class="relock-banner hidden">
           <span>本章曾定稿，正文已修改：语义检索已暂停覆盖本章。核对内容后可重新定稿。</span>
           <button id="btn-relock" class="btn btn-small btn-outline" type="button">重新定稿</button>
         </div>
-        <div class="editor-head">
-          <input id="chapter-title-input" class="chapter-title-input" type="text" placeholder="章节标题">
-          <div class="editor-actions">
-            <button id="btn-lock-chapter" class="btn btn-small btn-outline" title="定稿：作者确认本章不再修改，定稿后内容才会进入向量检索（供 AI 召回旧剧情细节）">定稿</button>
-            <button id="btn-polish-chapter" class="btn btn-small btn-outline">润色本章</button>
-            <button id="btn-save-chapter" class="btn btn-small">保存</button>
-            <button id="btn-gen-summary" class="btn btn-small btn-outline">生成总结</button>
+        <div class="editor-canvas">
+          <div class="editor-doc">
+            <div class="editor-eyebrow"></div>
+            <div class="editor-head">
+              <input id="chapter-title-input" class="chapter-title-input" type="text" placeholder="章节标题">
+            </div>
+            <label class="chapter-beat-box">
+              <span class="chapter-beat-label">节拍</span>
+              <input id="chapter-beat" class="chapter-beat" type="text" placeholder="本章节拍（可选）：本章必须完成的剧情节点，AI 写作时会参考">
+            </label>
+            <textarea id="chapter-content" class="chapter-content" placeholder="在这里写作，或从对话中插入 AI 生成的内容…"></textarea>
+            <div class="editor-foot">
+              <button id="btn-polish-selection" class="btn btn-small btn-ghost hidden">润色选中段落</button>
+              <span id="word-count" class="word-count"></span>
+            </div>
+            <div id="summary-box" class="summary-box hidden">
+              <div class="summary-label">本章总结 <span class="summary-hint">（AI 写下一章时会参考，防止剧情漂移）</span></div>
+              <p id="summary-text"></p>
+            </div>
           </div>
         </div>
-        <input id="chapter-beat" class="chapter-beat" type="text" placeholder="本章节拍（可选）：本章必须完成的剧情节点，AI 写作时会参考">
-        <textarea id="chapter-content" class="chapter-content" placeholder="在这里写作，或从对话中插入 AI 生成的内容…"></textarea>
-        <div class="editor-foot">
-          <button id="btn-polish-selection" class="btn btn-small btn-ghost hidden">润色选中段落</button>
-          <span id="word-count" class="word-count"></span>
-        </div>
-        <div id="summary-box" class="summary-box hidden">
-          <div class="summary-label">本章总结 <span class="summary-hint">（AI 写下一章时会参考，防止剧情漂移）</span></div>
-          <p id="summary-text"></p>
-        </div>
-        <button id="btn-enter-refine" class="refine-cta" type="button" title="在阅读/精修页打开本章，逐段打磨字句">
-          <span class="refine-cta-main">
-            <i class="refine-cta-line"></i><span class="refine-cta-title">进入精修</span><i class="refine-cta-line"></i>
-          </span>
-          <span class="refine-cta-hint">沉浸阅读 · 逐段打磨</span>
-        </button>
       </div>
     </section>
+
+    <!-- 右栏：AI 写作助手 -->
+    <section class="panel panel-chat">
+      <!-- UI 优化阶段 2c：三标签（对话/参谋/本章上下文）；挂载后由 frontend/components/ChatPanel.jsx 原位接管 -->
+      <div class="chat-head ai-head">
+        <h2 class="pane-title mz-sr-only">写作助手</h2>
+        <div class="ai-tabs" role="tablist" aria-label="写作助手">
+          <button type="button" role="tab" class="ai-tab on" aria-selected="true">对话</button>
+          <button type="button" role="tab" class="ai-tab" aria-selected="false">参谋</button>
+          <button type="button" role="tab" class="ai-tab" aria-selected="false">本章上下文</button>
+        </div>
+        <span class="pane-head-btns ai-head-btns">
+          <button type="button" id="btn-new-writing-conv" class="ai-icon-btn" title="开始一个新的写作会话（原会话历史保留）"><span class="mz-sr-only">新会话</span></button>
+          <button type="button" id="btn-open-agent-discuss" class="ai-icon-btn" title="到 AI 助手为本书新开一个整体讨论专题：只带这本书与当前章（可选人物），默认不带写作对话历史；从助手返回后还原同一会话同一章"><span class="mz-sr-only">另开整体讨论</span></button>
+          <button type="button" id="btn-clear-chat" class="ai-icon-btn" title="清空当前会话的对话记录"><span class="mz-sr-only">清空</span></button>
+        </span>
+      </div>
+      <div class="ai-pane ai-pane-chat" role="tabpanel">
+        <div class="ai-sess">
+          <select id="writing-conversation-select" title="切换写作会话（历史按任务隔离；默认为本书历史对话）"></select>
+          <div class="ctx-meter" id="ctx-meter" title="上下文窗口占用（真实值来自最近一次对话的 usage；未对话时为估算）">
+            <div class="ctx-bar"><div class="ctx-fill" id="ctx-fill"></div></div>
+            <span class="ctx-text" id="ctx-text">上下文 — / —</span>
+            <button id="btn-ctx-detail" class="btn btn-ghost btn-small" title="查看上下文详细组成（系统提示各节/对话历史/工具结果/输出预留 占比）">明细</button>
+            <button id="btn-compress" class="btn btn-ghost btn-small" title="把较早的对话压缩成存档摘要，释放上下文空间">压缩</button>
+          </div>
+        </div>
+        <!-- S4-05：统一任务卡（任务徽标 / 保存三态 / 资料更新）。内容由 React 侧
+             frontend/lib/run-status.js 经旧名 window.RunStatus 渲染（S5-10 起，legacy 标签已退役）。 -->
+        <div id="writing-run-card" class="run-card hidden" role="status"></div>
+        <div id="chat-messages" class="chat-messages"></div>
+      </div>
+      <div class="ai-pane ai-pane-consult" role="tabpanel" hidden></div>
+      <div class="ai-pane ai-pane-context" role="tabpanel" hidden></div>
+      <form id="chat-form" class="chat-input chat-composer">
+        <div class="composer-card">
+          <textarea id="chat-text" rows="3" placeholder="和 AI 聊聊剧情，或让它续写正文…（Ctrl+Enter 发送）"></textarea>
+          <div class="composer-foot">
+            <button type="button" id="btn-consult" class="consult-pill" title="参谋模式：只出剧情走向/人物行为建议，不写正文">参谋</button>
+            <span class="composer-ops">
+              <button type="button" id="btn-chat-stop" class="btn btn-small btn-stop hidden" title="中止当前生成（已生成的部分会保留）">停止</button>
+              <button type="submit" id="btn-send" class="btn btn-primary">发送</button>
+            </span>
+          </div>
+        </div>
+      </form>
+    </section>
   </main>
+  </div>
 </div>
 
 <!-- ============ 专项工作台 ============ -->
@@ -280,41 +298,7 @@
   <main class="settings-main">
     <section class="settings-card">
       <h3>模型接口</h3>
-      <label class="field">
-        <span>渠道</span>
-        <select id="set-channel">
-          <option value="paid">付费渠道（zen/go · 需要 API Key）</option>
-          <option value="free">免费渠道（zen · 无需 API Key）</option>
-          <option value="agnes">Agnes（apihub · 需要 API Key）</option>
-          <option value="stepfun">StepFun 官方（step_plan · 需要 API Key）</option>
-          <option value="custom">自定义</option>
-        </select>
-      </label>
-      <label class="field">
-        <span>Base URL</span>
-        <input id="set-base-url" type="text" placeholder="https://apihub.agnes-ai.com/v1">
-      </label>
-      <label class="field">
-        <span>API Key <small id="api-key-hint">（免费渠道可留空）</small></span>
-        <input id="set-api-key" type="text" placeholder="sk-…">
-      </label>
-      <label class="field">
-        <span>模型</span>
-        <input id="set-model" type="text" list="model-options" placeholder="deepseek-v4-flash">
-        <datalist id="model-options">
-          <option value="deepseek-v4-flash">付费 · DeepSeek V4 Flash</option>
-          <option value="deepseek-v4-flash-free">免费 · DeepSeek V4 Flash</option>
-          <option value="mimo-v2.5-free">免费 · MiMo V2.5</option>
-          <option value="nemotron-3-ultra-free">免费 · Nemotron 3 Ultra</option>
-          <option value="north-mini-code-free">免费 · North Mini Code</option>
-          <option value="agnes-2.5-flash">Agnes · 2.5 Flash（快）</option>
-          <option value="agnes-2.5-pro">Agnes · 2.5 Pro（强）</option>
-          <option value="agnes-2.0-flash">Agnes · 2.0 Flash</option>
-          <option value="agnes-2.5-pro-alpha">Agnes · 2.5 Pro Alpha</option>
-          <option value="step-3.7-flash">StepFun · 3.7 Flash（蒸馏同款，实测可跑）</option>
-          <option value="step-3.5-flash">StepFun · 3.5 Flash</option>
-        </datalist>
-      </label>
+      <div id="model-profiles" class="model-profiles"></div>
       <label class="field">
         <span>上下文窗口大小 <small id="ctx-window-hint">自动（跟随模型）</small></span>
         <input id="set-context-window" type="number" min="8000" step="1000" placeholder="128000">

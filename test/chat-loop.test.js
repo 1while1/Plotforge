@@ -85,6 +85,27 @@ test('M5 剧本·正常单轮：流式纯文本回复 → done 事件 + assistan
   assert.equal(ledger[0].status, 'ok');
 });
 
+// ---------------- 1b. 回复意图：纯正文「续写」请求 → prose（前端据此提供「插入章节」） ----------------
+test('M5 剧本·回复意图：作者「续写」+ 纯正文 → done/落库/列表三处 intent 均为 prose', async t => {
+  const { bookId, http, stub } = await setup(t, 'M5 回复意图');
+  stub.responders.push(() => sseStub([
+    { choices: [{ delta: { content: '他推开门，屋里的灯还没亮。' } }] },
+    { choices: [{ delta: {}, finish_reason: 'stop' }], usage: { prompt_tokens: 10, completion_tokens: 5 } },
+  ]));
+
+  const res = await postChat(http, bookId, { content: '续写' });
+  const events = await readStreamEvents(res);
+
+  const done = events.find(e => e.type === 'done');
+  assert.equal(done.intent, 'prose', 'done 事件必须带 intent（无正文也照发）');
+  const saved = db.get("SELECT tools_json FROM messages WHERE book_id = ? AND role = 'assistant'", [bookId]);
+  assert.equal(JSON.parse(saved.tools_json).find(entry => entry.kind === 'run').intent, 'prose', 'run 条目随消息持久化 intent');
+
+  const list = await fetch(`${http.baseUrl}/api/books/${bookId}/chat`).then(r => r.json());
+  const listed = list.messages.find(m => m.content === '他推开门，屋里的灯还没亮。');
+  assert.equal(listed.intent, 'prose', 'GET /chat 的助手消息带 intent');
+});
+
 // ---------------- 2. 带工具调用轮：只读工具执行 + 结果回灌格式 ----------------
 test('M5 剧本·工具轮走通：list_chapters 真实执行 → 下一轮请求里可见 assistant.tool_calls + role:tool 回灌', async t => {
   const { bookId, http, stub } = await setup(t, 'M5 工具轮');
@@ -188,6 +209,7 @@ test('M5 剧本·谎称完成：「第1章已写入」但无提交 → 带工具
   assert.equal(db.get('SELECT content FROM chapters WHERE id = ?', [chapterId]).content, '旧正文', '作者确认前正文不得被写');
 
   const done = events.find(e => e.type === 'done');
+  assert.equal(done.intent, 'operation', '本轮提交了写工具并停在待确认 → intent=operation');
   assert.ok(done.content.includes('等待作者确认'), '最终回复应是诚实的「待确认」而非「已写入」');
   assert.ok(!done.content.includes('已写入'), '谎称完成的正文不得原样交付');
   assert.ok(llmRows(bookId).some(r => r.scope === 'chat-writeclaim-retry' && r.status === 'ok'), '纠正轮入台账');

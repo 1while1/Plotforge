@@ -49,4 +49,15 @@ router.get('/:id/events', (req, res) => {
   });
 });
 
+router.get('/:id/read-evidence', (req, res) => {
+  const sessionKey = sessionKeyOf(req, res);
+  if (!sessionKey) return;
+  const run = runService.getRun(req.params.id);
+  if (!run) return res.status(404).json({ error: { code: 'RUN_NOT_FOUND', message: '运行不存在' } });
+  if (run.sessionKey !== sessionKey) {
+    return res.status(403).json({ error: { code: 'RUN_ACCESS_DENIED', message: '该运行不属于当前会话' } });
+  }
+  res.json({ runId: run.id, evidence: require('../runtime/read-evidence').listForRun(run.id) });
+});
+
 module.exports = router;

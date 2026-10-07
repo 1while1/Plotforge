@@ -59,7 +59,13 @@ function buildModel(d) {
 			color: "#b58bd9",
 			raw: true,
 		},
-		{ name: "剩余自由", tokens: free, color: "#d9d9d9", raw: true },
+		// 剩余段取边框色而非固定浅灰：暗色主题下固定浅灰会成为整条里最亮的一段
+		{
+			name: "剩余自由",
+			tokens: free,
+			color: "var(--border-strong)",
+			raw: true,
+		},
 	];
 	const segVal = (s) => (s.raw ? s.tokens : calib(s.tokens));
 	const segTag = (s) => (s.raw ? "" : calTag);
@@ -83,7 +89,21 @@ export function breakdownHTML(d) {
 	}
 	// 系统提示逐层明细：优先用该次请求落库的组装层台账（parts_json）（:755-762）
 	const hasLbParts = !!m.lb?.parts?.length;
-	const parts = hasLbParts ? m.lb.parts : d.system.parts || [];
+	const providerParts = hasLbParts ? m.lb.parts : d.system.parts || [];
+	const additional = hasLbParts
+		? Math.max(
+				0,
+				m.lb.system -
+					providerParts.reduce((sum, p) => sum + (p.tokens || 0), 0),
+			)
+		: Math.max(0, Number(d.system.additionalTokens) || 0);
+	const parts =
+		additional > 0
+			? [
+					...providerParts,
+					{ name: "工具历史、指南等额外注入", tokens: additional },
+				]
+			: providerParts;
 	const partsSrc = hasLbParts
 		? "本次请求逐层组装台账，随调用落库"
 		: "当前组装估算";

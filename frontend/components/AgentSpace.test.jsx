@@ -385,8 +385,9 @@ describe("T5 AgentSpace（页壳静态装配）", () => {
 			"#agent-tool-list .agent-tool-item",
 		);
 		expect(tools.length).toBe(1);
+		// 阶段 4c：助手能力清单对用户显示中文标签而非内部工具名
 		expect(tools[0].querySelector(".agent-tool-name").textContent).toBe(
-			"list_resources",
+			"列出受控资源",
 		);
 		expect(tools[0].querySelector(".agent-tool-desc").textContent).toBe(
 			"列出受控资源",

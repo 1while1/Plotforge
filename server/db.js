@@ -412,7 +412,7 @@ function getFilePath() {
   return dbFile;
 }
 
-// 对外脱敏：fs 报错原文可能携带本机绝对路径（如 ENOSPC ... 'C:\...\novel.db.tmp'），
+// 对外脱敏：fs 报错原文可能携带本机绝对路径（如 ENOSPC ... '临时目录/novel.db.tmp'），
 // 健康接口/HTTP 响应不得回传原始路径，只保留错误类别描述
 function sanitizeSaveError(message) {
   return String(message || '')

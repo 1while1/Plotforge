@@ -46,13 +46,22 @@ import {
 	load as loadStateBook,
 } from "../components/StateBookPanel.jsx";
 import { getApp } from "../lib/app-runtime.js";
+import {
+	isDrawer,
+	isDrawerOpen,
+	setDrawerOpen,
+	syncDrawerToggles,
+	toggleDrawer,
+} from "../lib/narrow-layout.js";
 import { runStatus } from "../lib/run-status.js";
 import {
 	bindWritingStatusRenderer,
 	isEditorDirty,
 } from "../lib/writing-status.js";
+import { mountBookRail } from "../shell/BookRail.jsx";
 
 const LAYOUT_PREFIX = "writing_layout_v1:";
+const CHAT_LAYOUT_PREFIX = "writing_chat_layout_v1:";
 const RETURN_KEY = "novel-writing-return";
 
 let visit = 0;
@@ -79,41 +88,101 @@ function setText(id, text) {
 
 // ---------- 布局折叠（:18-42） ----------
 function readLayoutCollapsed(bookId) {
+	return readFlag(LAYOUT_PREFIX + String(bookId));
+}
+
+function saveLayoutCollapsed(bookId, collapsed) {
+	saveFlag(LAYOUT_PREFIX + String(bookId), collapsed);
+}
+
+function readFlag(key) {
 	try {
-		return localStorage.getItem(LAYOUT_PREFIX + String(bookId)) === "collapsed";
+		return localStorage.getItem(key) === "collapsed";
 	} catch (_e) {
 		return false;
 	}
 }
 
-function saveLayoutCollapsed(bookId, collapsed) {
+function saveFlag(key, collapsed) {
 	try {
-		localStorage.setItem(
-			LAYOUT_PREFIX + String(bookId),
-			collapsed ? "collapsed" : "full",
-		);
+		localStorage.setItem(key, collapsed ? "collapsed" : "full");
 	} catch (_e) {
 		/* 忽略 */
 	}
 }
 
-export function applyLeftPanelLayout(collapsed) {
+// 顶栏两个折叠按钮是纯图标按钮：状态只写 aria-label/aria-expanded/mode-on，不改 textContent（会冲掉图标）
+function applyPanelToggle(benchClass, btnId, labels, collapsed) {
 	const bench = $("book-workbench");
-	if (bench) bench.classList.toggle("left-collapsed", !!collapsed);
-	const btn = $("btn-toggle-left-panel");
+	if (bench) bench.classList.toggle(benchClass, !!collapsed);
+	const btn = $(btnId);
 	if (btn) {
-		btn.textContent = collapsed ? "展开侧栏" : "收起侧栏";
+		btn.setAttribute("aria-label", collapsed ? labels[0] : labels[1]);
 		btn.classList.toggle("mode-on", !!collapsed);
 		btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
 	}
+	syncDrawerToggles();
 	return !!collapsed;
 }
 
+export function applyLeftPanelLayout(collapsed) {
+	return applyPanelToggle(
+		"left-collapsed",
+		"btn-toggle-left-panel",
+		["展开侧栏", "收起侧栏"],
+		collapsed,
+	);
+}
+
+// 窄屏下左栏/写作助手是抽屉：按钮只开合抽屉，不改按书记住的收起偏好
 export function toggleLeftPanel() {
+	if (isDrawer("nav")) return !toggleDrawer("nav");
 	const book = app().state.currentBook;
 	const next = !(book && readLayoutCollapsed(book.id));
 	if (book) saveLayoutCollapsed(book.id, next);
 	return applyLeftPanelLayout(next);
+}
+
+export function isLeftPanelCollapsed() {
+	const bench = $("book-workbench");
+	return !!bench && bench.classList.contains("left-collapsed");
+}
+
+export function applyChatPanelLayout(collapsed) {
+	return applyPanelToggle(
+		"chat-collapsed",
+		"btn-toggle-chat-panel",
+		["展开写作助手", "收起写作助手"],
+		collapsed,
+	);
+}
+
+export function toggleChatPanel() {
+	if (isDrawer("chat")) return !toggleDrawer("chat");
+	const book = app().state.currentBook;
+	const next = !(book && readFlag(CHAT_LAYOUT_PREFIX + String(book.id)));
+	if (book) saveFlag(CHAT_LAYOUT_PREFIX + String(book.id), next);
+	return applyChatPanelLayout(next);
+}
+
+// 全局导航栏点「写作/大纲/人物/世界/台账」：就地切换左栏标签。左栏收起时先展开；
+// 已展开且点的就是当前标签时收起（同 IDE 活动栏的习惯）。
+// 标签切换复用 ChapterEditorPanel 绑在 .tab[data-tab] 上的点击处理，不另写一套显隐逻辑。
+export function selectLeftTab(tab) {
+	const tabBtn = document.querySelector(`#panel-left .tab[data-tab="${tab}"]`);
+	const isActive = !!tabBtn && tabBtn.classList.contains("active");
+	if (isDrawer("nav")) {
+		const open = isDrawerOpen("nav");
+		setDrawerOpen("nav", !(open && isActive));
+		if (tabBtn && !isActive) tabBtn.click();
+		return;
+	}
+	if (!isLeftPanelCollapsed() && isActive) {
+		toggleLeftPanel();
+		return;
+	}
+	if (isLeftPanelCollapsed()) toggleLeftPanel();
+	if (tabBtn && !isActive) tabBtn.click();
 }
 
 // ---------- 状态条（:44-83） ----------
@@ -232,6 +301,13 @@ export function bindShellEvents() {
 			toggleLeftPanel();
 		};
 	}
+	const chatBtn = $("btn-toggle-chat-panel");
+	if (chatBtn && !chatBtn.dataset.shellBound) {
+		chatBtn.dataset.shellBound = "1";
+		chatBtn.onclick = () => {
+			toggleChatPanel();
+		};
+	}
 	const link = $("agent-return-writing");
 	if (link && !link.dataset.shellBound) {
 		link.dataset.shellBound = "1";
@@ -306,6 +382,7 @@ async function runShow(bookId) {
 		bindShellEvents();
 		bindStatusInputs();
 		applyLeftPanelLayout(readLayoutCollapsed(bookId));
+		applyChatPanelLayout(readFlag(CHAT_LAYOUT_PREFIX + String(bookId)));
 		renderWritingStatus();
 		await restoreWritingReturn(bookId);
 	} catch (e) {
@@ -324,6 +401,7 @@ function BookShell({ bookId }) {
 // 元素自身（S4-2/S5-1 mount 先例：key=visit++ 每次进入重挂，故每次进入都重跑 show 编排）。
 export function mount(bookId) {
 	ensureInstalled();
+	mountBookRail({ bookId, onSelectTab: selectLeftTab });
 	let container = document.getElementById("book-shell-root");
 	if (!container) {
 		container = document.createElement("div");

@@ -95,11 +95,11 @@ function seedFixtures() {
   const sourceId = db.run(
     `INSERT INTO corpus_sources (author, works_json, han_count, sha256, fingerprint_json, mask_dict_version, dir_path)
      VALUES ('哨兵作家', '["哨兵作品"]', 12345, 'sha256:abc', '{}', 'v1', ?)`,
-    [`C:\\${PATH_SENTINEL}\\corpus`]
+    [require('node:path').join(require('node:os').tmpdir(), PATH_SENTINEL, 'corpus')]
   ).lastInsertRowid;
   db.run(
     'INSERT INTO corpus_docs (source_id, work, path, han_count, sha256) VALUES (?, ?, ?, 100, ?)',
-    [sourceId, '哨兵作品', `C:\\${PATH_SENTINEL}\\corpus\\a.txt`, 'sha256:def']
+    [sourceId, '哨兵作品', require('node:path').join(require('node:os').tmpdir(), PATH_SENTINEL, 'corpus', 'a.txt'), 'sha256:def']
   );
   db.run(
     "INSERT INTO distill_jobs (source_id, stage, status, progress_json) VALUES (?, 'map', 'done', '{}')",

@@ -35,6 +35,7 @@ const TABLES = [
   { table: 'chapter_recycle' },
   { table: 'agent_runs' },
   { table: 'agent_run_events', parent: 'agent_runs', fk: 'run_id' },
+  { table: 'run_read_evidence', parent: 'agent_runs', fk: 'run_id' },
   // 会话按 book_id 过滤：global 会话（book_id NULL）不级联进任何书的备份；
   // conversation_summaries 无 book_id 列，按已导出会话的 TEXT 主键集过滤（须排在 conversations 之后、messages 之前）。
   { table: 'conversations' },

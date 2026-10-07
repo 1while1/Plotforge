@@ -216,3 +216,158 @@ test('HTTP 契约：/api/conversations/:id/compress 与 restore；活跃 run 409
   assert.equal(busy.status, 409);
   assert.equal(busy.body.error.code, 'CONVERSATION_ACTIVE_RUN');
 });
+
+test('极小压缩预算仍保留最新 user 与 assistant 配对', async t => {
+  const compression = loadCompression();
+  const { bookId, stub } = await httpCtx(t, '极小预算');
+  const conv = conversationSvc.createConversation({ kind: 'writing', scope: 'book', bookId });
+  for (let i = 0; i < 4; i++) {
+    conversationSvc.appendMessage({ conversationId: conv.id, role: 'user', content: '旧请求' + i + '内容'.repeat(40) });
+    conversationSvc.appendMessage({ conversationId: conv.id, role: 'assistant', content: '旧回答' + i + '内容'.repeat(40) });
+  }
+  conversationSvc.appendMessage({ conversationId: conv.id, role: 'user', content: 'LATEST_USER_REQUEST_' + '长'.repeat(50) });
+  conversationSvc.appendMessage({ conversationId: conv.id, role: 'assistant', content: 'LATEST_ASSISTANT_REPLY' });
+  stub.responders.push(() => summaryJson('极小预算摘要'));
+  const result = await compression.compressConversation({ conversationId: conv.id, targetTokens: 1 });
+  const active = db.all('SELECT content FROM messages WHERE conversation_id = ? AND compressed = 0 ORDER BY id', [conv.id]);
+  assert.ok(active.some(row => row.content.includes('LATEST_USER_REQUEST_')));
+  assert.ok(active.some(row => row.content === 'LATEST_ASSISTANT_REPLY'));
+  assert.ok(result.coveredMessageIds.length >= 2);
+});
+
+test('连续压缩继承旧摘要，存量多 active 在下一版合并并退役', async t => {
+  const compression = loadCompression();
+  const { bookId, stub } = await httpCtx(t, '连续压缩');
+  const conv = conversationSvc.createConversation({ kind: 'writing', scope: 'book', bookId });
+  for (let i = 0; i < 4; i++) conversationSvc.appendMessage({ conversationId: conv.id, role: i % 2 ? 'assistant' : 'user', content: '初轮' + i + '甲'.repeat(100) });
+  stub.responders.push(() => summaryJson('旧摘要唯一线索 BLUE-731'));
+  await compression.compressConversation({ conversationId: conv.id, targetTokens: 1 });
+  db.run('INSERT INTO conversation_summaries (conversation_id, content, covered_message_ids) VALUES (?, ?, ?)',
+    [conv.id, '更旧摘要唯一线索 GREEN-842', '[]']);
+  const selected = conversationSvc.getConversationContext({ conversationId: conv.id });
+  assert.ok(JSON.stringify(selected.messages).includes('BLUE-731'));
+  assert.ok(JSON.stringify(selected.messages).includes('GREEN-842'));
+  for (let i = 0; i < 4; i++) conversationSvc.appendMessage({ conversationId: conv.id, role: i % 2 ? 'assistant' : 'user', content: '新轮' + i + '乙'.repeat(100) });
+  stub.responders.push(() => summaryJson('合并摘要 BLUE-731 GREEN-842 新轮'));
+  await compression.compressConversation({ conversationId: conv.id, targetTokens: 1 });
+  const prompt = JSON.stringify(stub.calls[1].body);
+  assert.ok(prompt.includes('BLUE-731') && prompt.includes('GREEN-842') && prompt.includes('新轮0'));
+  assert.equal(db.get("SELECT COUNT(*) AS n FROM conversation_summaries WHERE conversation_id = ? AND status = 'active'", [conv.id]).n, 1);
+  const current = conversationSvc.getConversationContext({ conversationId: conv.id });
+  assert.ok(JSON.stringify(current.messages).includes('合并摘要'));
+  compression.restoreConversation(conv.id);
+  assert.equal(db.get("SELECT COUNT(*) AS n FROM conversation_summaries WHERE conversation_id = ? AND status = 'active'", [conv.id]).n, 0);
+});
+
+test('二次压缩失败与超预算均不改变旧摘要和消息归档状态', async t => {
+  const compression = loadCompression();
+  const { bookId, stub } = await httpCtx(t, '压缩原子性');
+  const conv = conversationSvc.createConversation({ kind: 'agent', scope: 'book', bookId });
+  for (let i = 0; i < 4; i++) conversationSvc.appendMessage({ conversationId: conv.id, role: i % 2 ? 'assistant' : 'user', content: '旧轮' + i + '甲'.repeat(100) });
+  stub.responders.push(() => summaryJson('上一版存档'));
+  await compression.compressConversation({ conversationId: conv.id, targetTokens: 1 });
+  for (let i = 0; i < 4; i++) conversationSvc.appendMessage({ conversationId: conv.id, role: i % 2 ? 'assistant' : 'user', content: '新轮' + i + '乙'.repeat(100) });
+  const before = JSON.stringify({
+    messages: db.all('SELECT id, compressed FROM messages WHERE conversation_id = ? ORDER BY id', [conv.id]),
+    summaries: db.all('SELECT id, status FROM conversation_summaries WHERE conversation_id = ? ORDER BY id', [conv.id]),
+  });
+  stub.responders.push(() => { throw new Error('synthetic LLM failure'); });
+  await assert.rejects(compression.compressConversation({ conversationId: conv.id, targetTokens: 1 }));
+  assert.equal(JSON.stringify({
+    messages: db.all('SELECT id, compressed FROM messages WHERE conversation_id = ? ORDER BY id', [conv.id]),
+    summaries: db.all('SELECT id, status FROM conversation_summaries WHERE conversation_id = ? ORDER BY id', [conv.id]),
+  }), before);
+  db.run('UPDATE conversation_summaries SET content = ? WHERE conversation_id = ? AND status = ?', ['巨'.repeat(13000), conv.id, 'active']);
+  await assert.rejects(compression.compressConversation({ conversationId: conv.id, targetTokens: 1 }), { code: 'SUMMARY_INPUT_TOO_LARGE' });
+  assert.equal(db.get("SELECT COUNT(*) AS n FROM conversation_summaries WHERE conversation_id = ? AND status = 'active'", [conv.id]).n, 1);
+});
+
+test('旧摘要占用输入预算时仍保尾压缩新对话', async t => {
+  const compression = loadCompression();
+  const { bookId, stub } = await httpCtx(t, '摘要预算');
+  const conv = conversationSvc.createConversation({ kind: 'writing', scope: 'book', bookId });
+  db.run('INSERT INTO conversation_summaries (conversation_id, content, covered_message_ids) VALUES (?, ?, ?)',
+    [conv.id, 'OLD_SUMMARY_ANCHOR_' + '旧'.repeat(3000), '[]']);
+  for (let i = 0; i < 35; i++) conversationSvc.appendMessage({
+    conversationId: conv.id, role: i % 2 ? 'assistant' : 'user', content: '历史_' + i + '_' + '甲'.repeat(450),
+  });
+  stub.responders.push(() => summaryJson('新摘要保留旧线索和近期对话'));
+  const result = await compression.compressConversation({ conversationId: conv.id, targetTokens: 1 });
+  const input = stub.calls[0].body.messages[1].content;
+  assert.ok(input.includes('OLD_SUMMARY_ANCHOR_'));
+  assert.ok(input.includes('历史_32_'));
+  assert.ok(input.length <= 12000);
+  assert.ok(result.coveredMessageIds.length >= 30);
+});
+
+test('摘要模型调用期间来源变化则整笔回滚', async t => {
+  const compression = loadCompression();
+  const { bookId, stub } = await httpCtx(t, '摘要版本锁');
+  const conv = conversationSvc.createConversation({ kind: 'agent', scope: 'book', bookId });
+  for (let i = 0; i < 4; i++) conversationSvc.appendMessage({
+    conversationId: conv.id, role: i % 2 ? 'assistant' : 'user', content: '原始_' + i + '乙'.repeat(100),
+  });
+  db.run('INSERT INTO conversation_summaries (conversation_id, content, covered_message_ids) VALUES (?, ?, ?)',
+    [conv.id, '原摘要', '[]']);
+  stub.responders.push(() => {
+    db.run('INSERT INTO conversation_summaries (conversation_id, content, covered_message_ids) VALUES (?, ?, ?)',
+      [conv.id, '模型等待时新增摘要', '[]']);
+    return summaryJson('旧快照的生成结果');
+  });
+  await assert.rejects(compression.compressConversation({ conversationId: conv.id, targetTokens: 1 }), { code: 'SOURCE_CHANGED' });
+  assert.deepEqual(db.all("SELECT content FROM conversation_summaries WHERE conversation_id = ? AND status = 'active' ORDER BY id", [conv.id]).map(r => r.content),
+    ['原摘要', '模型等待时新增摘要']);
+  assert.equal(db.get('SELECT COUNT(*) AS n FROM messages WHERE conversation_id = ? AND compressed != 0', [conv.id]).n, 0);
+});
+
+test('摘要模型调用期间新增消息则拒绝旧快照', async t => {
+  const compression = loadCompression();
+  const { bookId, stub } = await httpCtx(t, '消息版本锁');
+  const conv = conversationSvc.createConversation({ kind: 'writing', scope: 'book', bookId });
+  for (let i = 0; i < 4; i++) conversationSvc.appendMessage({
+    conversationId: conv.id, role: i % 2 ? 'assistant' : 'user', content: '旧轮_' + i + '丙'.repeat(100),
+  });
+  stub.responders.push(() => {
+    conversationSvc.appendMessage({ conversationId: conv.id, role: 'user', content: '模型等待时新增消息' });
+    return summaryJson('旧快照摘要');
+  });
+  await assert.rejects(compression.compressConversation({ conversationId: conv.id, targetTokens: 1 }), { code: 'SOURCE_CHANGED' });
+  assert.equal(db.get('SELECT COUNT(*) AS n FROM messages WHERE conversation_id = ? AND compressed = 1', [conv.id]).n, 0);
+  assert.equal(db.get('SELECT COUNT(*) AS n FROM conversation_summaries WHERE conversation_id = ?', [conv.id]).n, 0);
+});
+
+test('运行中禁止从 Agent 与写作入口还原，结束后可以还原', async t => {
+  const { bookId, http } = await httpCtx(t, '还原守卫');
+  for (const kind of ['agent', 'writing']) {
+    const conv = conversationSvc.createConversation({ kind, scope: 'book', bookId });
+    conversationSvc.appendMessage({ conversationId: conv.id, role: 'user', content: '已归档原文' });
+    db.run('UPDATE messages SET compressed = 1 WHERE conversation_id = ?', [conv.id]);
+    db.run("INSERT INTO conversation_summaries (conversation_id, content, covered_message_ids) VALUES (?, '既有摘要', '[]')", [conv.id]);
+    db.run("INSERT INTO messages (book_id, conversation_id, role, content, compressed) VALUES (?, ?, 'assistant', '【上下文压缩存档】既有摘要', 2)", [bookId, conv.id]);
+    const runId = 'restore-' + kind;
+    db.run(
+      "INSERT INTO agent_runs (id, request_id, session_key, conversation_id, entry, mode, status, created_at) VALUES (?, ?, ?, ?, ?, 'discuss', 'running', ?)",
+      [runId, 'request-' + kind, 'session-' + kind, conv.id, kind === 'writing' ? 'chat' : 'agent', new Date().toISOString()]
+    );
+    const path = kind === 'agent'
+      ? "/api/conversations/" + conv.id + "/compress/restore"
+      : "/api/books/" + bookId + "/chat/compress/restore";
+    const body = kind === 'writing' ? { conversationId: conv.id } : undefined;
+    const before = JSON.stringify({
+      messages: db.all('SELECT id, compressed FROM messages WHERE conversation_id = ? ORDER BY id', [conv.id]),
+      summaries: db.all('SELECT id, status FROM conversation_summaries WHERE conversation_id = ? ORDER BY id', [conv.id]),
+    });
+    const busy = await json(http.baseUrl, 'POST', path, body);
+    assert.equal(busy.status, 409, kind);
+    assert.equal(busy.body.error.code, 'CONVERSATION_ACTIVE_RUN');
+    assert.equal(JSON.stringify({
+      messages: db.all('SELECT id, compressed FROM messages WHERE conversation_id = ? ORDER BY id', [conv.id]),
+      summaries: db.all('SELECT id, status FROM conversation_summaries WHERE conversation_id = ? ORDER BY id', [conv.id]),
+    }), before, kind + ' must stay unchanged');
+    db.run('UPDATE agent_runs SET status = ? WHERE id = ?', ['finished', runId]);
+    const restored = await json(http.baseUrl, 'POST', path, body);
+    assert.equal(restored.status, 200, kind);
+    assert.equal(restored.body.restored, 1, kind);
+    assert.equal(db.get("SELECT COUNT(*) AS n FROM conversation_summaries WHERE conversation_id = ? AND status = 'active'", [conv.id]).n, 0);
+  }
+});

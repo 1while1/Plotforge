@@ -85,13 +85,21 @@ describe("ChatJumpBottom（自挂载，React 渲染按钮）", () => {
 		msgs.dispatchEvent(new Event("scroll"));
 		await flushFrames();
 		expect(btn.classList.contains("show")).toBe(false);
-		// 点击平滑回底
+		// 点击直接置底（不走 smooth：屏外消息渲染后终点会过期），且随后高度增长仍补滚到底
 		const scrollTo = vi.fn();
 		msgs.scrollTo = scrollTo;
+		Object.defineProperty(msgs, "scrollTop", {
+			value: 0,
+			writable: true,
+			configurable: true,
+		});
 		await act(async () => {
 			btn.click();
 		});
-		expect(scrollTo).toHaveBeenCalledTimes(1);
-		expect(scrollTo).toHaveBeenCalledWith({ top: 1000, behavior: "smooth" });
+		expect(scrollTo).not.toHaveBeenCalled();
+		expect(msgs.scrollTop).toBe(1000);
+		define("scrollHeight", 1600);
+		await flushFrames();
+		expect(msgs.scrollTop).toBe(1600);
 	});
 });

@@ -1,20 +1,8 @@
 {
   "name": "plotforge",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Local-first AI-assisted novel writing studio (React + Express + sql.js)",
   "main": "server/index.js",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/1while1/Plotforge.git"
-  },
-  "keywords": [
-    "novel-writing",
-    "ai-writing",
-    "llm",
-    "local-first",
-    "writing-tool"
-  ],
   "scripts": {
     "start": "node server/index.js",
     "dev": "vite",
@@ -23,29 +11,34 @@
     "test:fe": "vitest run",
     "test:e2e": "node tools/e2e-test.js",
     "test:db": "node --test --test-concurrency=1 test/db-migrations.test.js",
-    "seed": "node tools/seed-demo.js",
-    "prepare": "husky"
-  },
-  "engines": {
-    "node": ">=18"
+    "prepare": "husky",
+    "seed": "node tools/seed-demo.js"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^2.0.67",
     "@xenova/transformers": "^2.17.2",
     "ai": "^6.0.253",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "express": "^5.2.1",
+    "lucide-react": "^1.51.0",
+    "radix-ui": "^1.6.7",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-router": "^8.4.0",
     "sql.js": "^1.14.1",
+    "tailwind-merge": "^3.7.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",
+    "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.1.1",
     "husky": "^9.1.7",
     "jsdom": "^29.1.1",
     "lint-staged": "^17.5.1",
+    "tailwindcss": "^4.3.3",
     "vite": "^8.3.1",
     "vitest": "^5.0.2"
   },
@@ -59,5 +52,20 @@
     "test/**/*": [
       "npx biome check --no-errors-on-unmatched"
     ]
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/1while1/Plotforge.git"
+  },
+  "keywords": [
+    "novel-writing",
+    "ai-writing",
+    "llm",
+    "local-first",
+    "writing-tool"
+  ],
+  "engines": {
+    "node": "^22.13.0 || ^24.0.0 || >=26.0.0"
   }
 }

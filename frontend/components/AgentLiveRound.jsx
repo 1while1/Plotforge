@@ -9,6 +9,7 @@
 // 零 fetch、零 window.* 写入、零 localStorage（pending 快照经 cardDeps.rememberPending 交回 hook）。
 import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { agentToolLabel } from "../lib/agent-tool-labels.js";
 import AgentActionCard from "./AgentActionCard.jsx";
 // S5-8 出口件：滚动目标就是消息容器（:1344-1347）
 import { scrollMessagesToBottom } from "./AgentMessageList.jsx";
@@ -81,7 +82,7 @@ const AgentLiveRound = forwardRef(function AgentLiveRound(
 					const s = document.createElement("summary");
 					const label = document.createElement("span");
 					label.className = "tool-call-name";
-					label.textContent = `调用工具 · ${op.toolName || ""}`;
+					label.textContent = `调用工具 · ${agentToolLabel(op.toolName)}`;
 					const status = document.createElement("span");
 					status.className = "tool-call-status";
 					status.textContent = "执行中…";

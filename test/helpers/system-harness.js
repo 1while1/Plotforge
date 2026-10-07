@@ -40,7 +40,7 @@ const STUB_BASE_URL = 'http://llm-stub.local/v1';
 // 打开一套隔离系统：临时库 + 占位模型配置 + fetch 剧本桩 + 可控 embedding + 真实 HTTP 服务。
 // 调用方负责 dispose（测试里用 t.after，长跑驱动里 try/finally）。
 // filePath（S6-03 追加，默认 null 保持原语义）：显式临时库路径——长跑驱动要求库落在
-// 任务卡指定目录（C:/tmp/moyan-s6/），此时不建临时目录、dispose 也不删该文件。
+// 任务卡指定目录（系统临时证据目录/），此时不建临时目录、dispose 也不删该文件。
 async function openSystem({ label = 's6-01', filePath = null } = {}) {
   const location = filePath
     ? { dir: null, filePath: path.resolve(filePath), external: true }
@@ -1756,9 +1756,9 @@ function createStubUpstream() {
 
 // ---------------------------------------------------------------- 第 10 组：隔离进程重启/恢复
 
-// 隔离进程轮次的工作目录：优先任务卡指定的 C:/tmp/moyan-s6（不存在则退回系统临时目录并如实记录）
+// 隔离进程轮次的工作目录：优先任务卡指定的 系统临时证据目录（不存在则退回系统临时目录并如实记录）
 function restartWorkDir() {
-  const preferred = 'C:/tmp/moyan-s6';
+  const preferred = path.join(os.tmpdir(), 'plotforge-system-qa');
   try {
     fs.mkdirSync(preferred, { recursive: true });
     fs.accessSync(preferred, fs.constants.W_OK);

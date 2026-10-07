@@ -1,5 +1,5 @@
 // Select 纸墨风下拉雏形（S3-1 D5，**不接线**）：受控原生 <select> 包装——React 受控
-// value/onChange 天然等价原生行为；纸墨风＝全局 select 元素样式直接继承（style.css
+// value/onChange 天然等价原生行为；纸墨风＝全局 select 元素样式直接继承（styles/pages/workbench.css
 // 对原生 select 的元素级样式），零新 CSS、零自定义浮层。
 export default function Select({
 	value,

@@ -254,6 +254,7 @@ export function useChatTransport(opts) {
 		...composer,
 		composer,
 		live: liveNode,
+		typing,
 		transport,
 		queueLength: () => transport.queueLength(),
 	};

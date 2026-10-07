@@ -6,10 +6,10 @@
 //      该字面量的唯一落点是 P6-2 ⑨ 的历史说明注释（恰 1 处，承 zero-global T1 的「注释行豁免」口径）；
 //      「产物面恰 1 个 `/app/entry.js` 且由 Vite 注入」由构建门禁（`npm run build` 后清点）见证。
 //   ② 壳 DOM 与入场 `public/index.html` 逐字等值（charter §1 红线 3）：`id=` 241 各恰一份／class 唯一
-//      词元 158／11 段注释锚逐字在位；**无静态 `#app-root`**（挂载点由 `entry.jsx` 的
+//      词元 187／11 段注释锚逐字在位；**无静态 `#app-root`**（挂载点由 `entry.jsx` 的
 //      `resolveMountPoint()` 动态创建——P6-2 后生产与 dev 的统一路径，Plan §2.5-D2-3 备案）。
-//   ③ 退役面零残留（`legacy/*.js` 零命中、名单内 `window.*` 注释剥离后零命中）＋样式表不进构建管线
-//      （`<link … vite-ignore>` 且 `href` 原值保留）。
+//   ③ 退役面零残留（`legacy/*.js` 零命中、名单内 `window.*` 注释剥离后零命中）＋样式表全部走构建
+//      （UI 优化阶段 5 起源 HTML 零手工 `<link>`，`public/style.css` 已并入 `frontend/styles/base.css`）。
 //   ④ 产物不入库：`.gitignore` 含 `/public/index.html`。
 //
 // 红态成因（HEAD `cb9b22b`）：`frontend/index.html` 为 12 行 dev 壳（静态 `#app-root`、无 11 锚、
@@ -106,6 +106,13 @@ const SPOT_IDS = [
 	"curve-mount",
 	"stylelab-mount",
 	"writing-conversation-select",
+	// UI 优化阶段 1：写作页全局导航栏挂点与写作助手折叠按钮
+	"book-rail",
+	"btn-toggle-chat-panel",
+	// UI 优化阶段 2：章节栏筛选条、底栏与总数挂点（ChapterEditorPanel portal 落点）
+	"chapter-filter",
+	"chapter-foot",
+	"chapter-total",
 ];
 
 describe("T1 HTML 源契约（静态壳单一事实源＝frontend/index.html）", () => {
@@ -125,7 +132,7 @@ describe("T1 HTML 源契约（静态壳单一事实源＝frontend/index.html）"
 		expect(INDEX_HTML.match(/\/app\/entry\.js/g) || []).toHaveLength(1);
 	});
 
-	it("T1-2 壳 DOM 不变量：241 id 各恰一份／158 class 词元／11 段注释锚；无静态 #app-root", () => {
+	it("T1-2 壳 DOM 不变量：241 id 各恰一份／187 class 词元／11 段注释锚；无静态 #app-root", () => {
 		const ids = [...INDEX_HTML.matchAll(/id="([^"]+)"/g)].map((m) => m[1]);
 		expect(ids).toHaveLength(241);
 		expect(new Set(ids).size).toBe(241);
@@ -139,7 +146,7 @@ describe("T1 HTML 源契约（静态壳单一事实源＝frontend/index.html）"
 		for (const m of INDEX_HTML.matchAll(/class="([^"]*)"/g)) {
 			for (const token of m[1].split(/\s+/)) if (token) classTokens.add(token);
 		}
-		expect(classTokens.size).toBe(158);
+		expect(classTokens.size).toBe(187);
 		for (const anchor of SHELL_ANCHORS) {
 			expect(INDEX_HTML, `段注释锚必须在位：${anchor}`).toContain(anchor);
 		}
@@ -150,7 +157,7 @@ describe("T1 HTML 源契约（静态壳单一事实源＝frontend/index.html）"
 		expect(ids).not.toContain("app-root");
 	});
 
-	it("T1-3 退役面零残留＋样式表不进构建管线（vite-ignore，href 原值）", () => {
+	it("T1-3 退役面零残留＋样式表全部走构建（源 HTML 零手工 link）", () => {
 		expect(INDEX_HTML.match(/legacy\/[A-Za-z0-9._-]+\.js/g) || []).toEqual([]);
 		const live = ALL.filter((name) =>
 			new RegExp(`window\\.${name}\\b`).test(NO_COMMENT),
@@ -159,10 +166,12 @@ describe("T1 HTML 源契约（静态壳单一事实源＝frontend/index.html）"
 			live,
 			`HTML 注释剥离后名单内 window.* 残留：${live.join(", ")}`,
 		).toEqual([]);
+		// UI 优化阶段 5：原 public/style.css 并入 frontend/styles/base.css，由 Vite 注入唯一样式 link
 		const links = INDEX_HTML.match(/<link\b[^>]*>/g) || [];
-		expect(links).toHaveLength(1);
-		expect(links[0]).toContain('href="style.css?v=20260923a"');
-		expect(links[0]).toContain("vite-ignore");
+		expect(links).toEqual([]);
+		expect(fs.existsSync(path.join(REPO_ROOT, "public", "style.css"))).toBe(
+			false,
+		);
 	});
 
 	it("T1-4 产物不入库：.gitignore 含 /public/index.html", () => {

@@ -77,20 +77,24 @@ function readChapterIdOf(args) {
 }
 
 function recordReadReceipt(context, name, result) {
-  if (!CHAPTER_READ_TOOLS.has(name) || !Array.isArray(context.readReceipts)) return;
+  if (!CHAPTER_READ_TOOLS.has(name)) return;
   const chapterId = readChapterIdOf(context.args);
   // 结果必须是该章的真实读取页（工具失败/读到别的章不记账）
   if (chapterId == null || !result || typeof result !== 'object' || Number(result.id) !== chapterId) return;
   const row = db.get('SELECT revision, content FROM chapters WHERE id = ? AND book_id = ?', [chapterId, context.bookId]);
   if (!row) return;
-  context.readReceipts.push({
+  const receipt = {
     toolCallId: context.toolCallId || '',
     bookId: Number(context.bookId),
     chapterId,
     revision: Number(row.revision),
     contentHash: hashChapterContent(row.content),
     observedAt: new Date().toISOString(),
+  };
+  if (context.runId) require('../runtime/read-evidence').persistRead({
+    runId: context.runId, bookId: context.bookId, chapterId, toolName: name, receipt,
   });
+  if (Array.isArray(context.readReceipts)) context.readReceipts.push(receipt);
 }
 
 function recordReadFailure(context, name, error) {

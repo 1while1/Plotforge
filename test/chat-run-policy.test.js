@@ -362,3 +362,20 @@ test('确认等待变体受结算约束，暂停与取消优先', () => {
   }
   assert.equal(policy.finalizeText('正文已写入。', { status: 'finished' }, { verifiedWrite: true, settledAction: { ...settledAction, status: 'approved' } }).content, '正文已写入。');
 });
+
+test('有历史已批准写入时，只放行明确回顾历史的陈述', () => {
+  const policy = require('../server/chat/run-policy');
+  const options = { approvedWrites: [{ name: 'replace_chapter', chapterId: 123 }] };
+  const history = 'chapterId:123 的正文已写入，但那是上一轮你确认过的操作。';
+  const recalled = policy.finalizeText(history, { status: 'finished' }, options);
+  assert.equal(recalled.content, history);
+  assert.equal(recalled.state.status, 'finished');
+  assert.equal(policy.finalizeText('chapterId:999 的正文已写入，是上一轮的操作。', { status: 'finished' }, options).state.reason, 'unverified_write');
+  assert.equal(policy.finalizeText('第1章正文已写入，是上一轮的操作。', { status: 'finished' }, options).state.reason, 'unverified_write');
+  assert.equal(policy.finalizeText('chapterId:123 上一轮写入过，本轮正文已写入。', { status: 'finished' }, options).state.reason, 'unverified_write');
+  for (const claim of ['第1章正文已写入，共计1832字。', '正文已追加到当前章节，请查看。']) {
+    const blocked = policy.finalizeText(claim, { status: 'finished' }, options);
+    assert.equal(blocked.state.reason, 'unverified_write');
+    assert.doesNotMatch(blocked.content, /1832|请查看/);
+  }
+});

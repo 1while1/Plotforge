@@ -19,6 +19,8 @@ async function buildTools(context = {}) {
     conversationId: context.conversationId || null,
     // S3-02：服务端工具事件观察（会话证据持久化）
     onToolResult: context.onToolResult || null,
+    readReceipts: context.readReceipts || null,
+    readAttempts: context.readAttempts || null,
     // S3-05：discuss 只读约束传给执行器（executeForModel 内 ensureAllowed 二次校验）
     profile,
   });

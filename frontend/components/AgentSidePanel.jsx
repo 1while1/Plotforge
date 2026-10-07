@@ -7,6 +7,7 @@
 // value 后派发的非冒泡 change 也要命中（ChatPanel.jsx:48-64 同配方；两路按 e.bubbles 分流恰一次）。
 import { useEffect, useRef } from "react";
 import { RES_EMPTY_HINT } from "../lib/agent-resources.js";
+import { agentToolLabel } from "../lib/agent-tool-labels.js";
 
 function call(fn, ...args) {
 	if (typeof fn === "function") fn(...args);
@@ -103,7 +104,7 @@ export default function AgentSidePanel({
 				<ul id="agent-tool-list" className="agent-tool-list">
 					{(tools || []).map((t) => (
 						<li key={t.name} className="agent-tool-item">
-							<span className="agent-tool-name">{t.name}</span>
+							<span className="agent-tool-name">{agentToolLabel(t.name)}</span>
 							<span className="agent-tool-desc">{t.description}</span>
 						</li>
 					))}

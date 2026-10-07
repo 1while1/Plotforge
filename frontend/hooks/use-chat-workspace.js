@@ -72,7 +72,15 @@ import {
 	worldSaveRequest,
 } from "../lib/chat-side-lists.js";
 import { createRunStatusController } from "../lib/chat-status.js";
+import {
+	clearContinuePreview,
+	getContinuePreview,
+	isContinuationCandidate,
+	showContinuePreview,
+} from "../lib/continue-preview.js";
+import { getFocusState, setFocusChatOpen } from "../lib/focus-state.js";
 import { runStatus } from "../lib/run-status.js";
+import { getWritingPrefs } from "../lib/writing-prefs.js";
 // P6-2 §2.5-D5：返回锚写入改为 BookShell 导出直取（原 `window.BookPage.saveWritingReturn`，
 // legacy book-chat.js:177/:243-244 两点）。hooks→pages 的反向 import 仅**调用期**使用
 // （saveWritingReturn 在函数体内调用），无顶层求值＝无 TDZ；该环与 BookShell→ChatWorkspace→hooks 同源。
@@ -152,6 +160,9 @@ export function createChatWorkspaceController(deps) {
 		world: [],
 		characters: [],
 		lastLoadedMessageId: null,
+		consultLog: [],
+		chapterContext: { status: "idle", chapterId: null, data: null },
+		previewContent: null,
 	};
 	const listeners = new Set();
 	function getState() {
@@ -212,6 +223,12 @@ export function createChatWorkspaceController(deps) {
 
 	// ---------- :1583-1653 loadChat ----------
 	async function loadChat() {
+		const preview = getContinuePreview();
+		if (preview && preview.bookId !== getBookId()) {
+			clearContinuePreview();
+			setState({ previewContent: null });
+		}
+		loadConsultLog();
 		try {
 			const data = await bookApi(
 				"GET",
@@ -463,7 +480,8 @@ export function createChatWorkspaceController(deps) {
 		toast(ORIGIN_JUMP_TOAST);
 	}
 
-	// :963-973 插入到当前章节（等值 legacy：不 dispatch input）
+	// :963-973 插入到当前章节。legacy 只改 value、不派发 input：编辑器脏标记与 3 秒自动保存都不触发，
+	// 状态条仍显示「已保存」，切章/关页会丢掉插入的内容——这里补派发 input（与手打同一条保存链）。
 	function insertToChapter(content) {
 		if (!getChapterId()) {
 			toast("请先在左侧选择一个章节");
@@ -474,12 +492,154 @@ export function createChatWorkspaceController(deps) {
 		c.value += `\n\n${content}`;
 		const wc = doc()?.getElementById("word-count");
 		if (wc) wc.textContent = `共 ${c.value.replace(/\s/g, "").length} 字`;
-		toast("已插入，记得保存");
+		c.dispatchEvent(new Event("input", { bubbles: true }));
+		toast("已插入，停笔 3 秒后自动保存");
+	}
+
+	// 参谋问答不进服务端会话（/consult 不落库），单独按书存本机，供「参谋」标签回看
+	const CONSULT_LOG_PREFIX = "mozhen.consult-log.v1.";
+	const CONSULT_LOG_MAX = 60;
+	function consultLogKey() {
+		const bid = getBookId();
+		return bid == null ? null : `${CONSULT_LOG_PREFIX}${bid}`;
+	}
+	function loadConsultLog() {
+		const key = consultLogKey();
+		let list = [];
+		try {
+			const raw = key && storage ? storage.getItem(key) : null;
+			const parsed = raw ? JSON.parse(raw) : [];
+			list = Array.isArray(parsed) ? parsed : [];
+		} catch (_e) {
+			list = [];
+		}
+		setState({ consultLog: list });
+	}
+	function saveConsultLog(list) {
+		const key = consultLogKey();
+		if (!key || !storage) return;
+		try {
+			storage.setItem(key, JSON.stringify(list));
+		} catch (_e) {
+			/* 配额满或隐私模式：本次会话照常显示 */
+		}
+	}
+	let consultSeq = 0;
+	function appendConsult(msg) {
+		consultSeq += 1;
+		const entry = {
+			id: `consult-${Date.now()}-${consultSeq}`,
+			role: msg.role === "consultant" ? "consultant" : "user",
+			content: msg.content || "",
+			reasoning: msg.reasoning || "",
+			retrieval: msg.retrieval || null,
+			chapterId: getChapterId(),
+			at: Date.now(),
+		};
+		const list = [...state.consultLog, entry].slice(-CONSULT_LOG_MAX);
+		setState({ consultLog: list });
+		saveConsultLog(list);
+	}
+	function clearConsultLog() {
+		if (!window.confirm("清空本书的参谋记录？（只存在本机，清空后无法恢复）"))
+			return;
+		setState({ consultLog: [] });
+		saveConsultLog([]);
+	}
+
+	// 「本章上下文」标签：与明细弹窗同一接口，按当前章组装（不调 LLM）
+	let contextSeq = 0;
+	async function loadChapterContext() {
+		if (!getBookId()) return;
+		const cid = getChapterId();
+		if (!cid) {
+			setState({
+				chapterContext: { status: "no-chapter", chapterId: null, data: null },
+			});
+			return;
+		}
+		contextSeq += 1;
+		const seq = contextSeq;
+		setState({
+			chapterContext: {
+				status: "loading",
+				chapterId: cid,
+				data:
+					state.chapterContext.chapterId === cid
+						? state.chapterContext.data
+						: null,
+			},
+		});
+		try {
+			const conv = conversationQuery(currentConversationId()).replace("?", "&");
+			const data = await bookApi(
+				"GET",
+				`/context-breakdown?chapterId=${cid}${conv}`,
+			);
+			if (seq !== contextSeq) return;
+			setState({ chapterContext: { status: "ready", chapterId: cid, data } });
+		} catch (e) {
+			if (seq !== contextSeq) return;
+			setState({
+				chapterContext: {
+					status: "error",
+					chapterId: cid,
+					data: null,
+					error: e?.message || "加载失败",
+				},
+			});
+		}
+	}
+
+	// 「正文内预览」呈现：本轮新到的续写型回复交给编辑区预览，作者接受后才写入正文
+	const REWRITE_PROMPT = "重写刚才这段续写：情节走向不变，换一种写法。";
+	// 专注写作时聊天记录收起，续写只能落在正文里看，所以不论续写方式设置都走预览
+	function offerContinuePreview(msg, id) {
+		if (getWritingPrefs().continueStyle !== "inline" && !getFocusState().active)
+			return false;
+		if (!isContinuationCandidate(msg)) return false;
+		const chapterId = getChapterId();
+		if (!chapterId) return false;
+		const content = String(msg.content).trim();
+		showContinuePreview({
+			id,
+			bookId: getBookId(),
+			chapterId,
+			content,
+			accept: () => {
+				insertToChapter(content);
+				clearContinuePreview(id);
+				setState({ previewContent: null });
+			},
+			discard: () => {
+				clearContinuePreview(id);
+				setState({ previewContent: null });
+			},
+			rewrite: () => {
+				clearContinuePreview(id);
+				setState({ previewContent: null });
+				if (transport && typeof transport.sendText === "function")
+					transport.sendText(REWRITE_PROMPT);
+			},
+		});
+		setState({ previewContent: content });
+		return true;
+	}
+	function locatePreview() {
+		const el = doc()?.querySelector("#page-book .continue-preview");
+		if (el && typeof el.scrollIntoView === "function")
+			el.scrollIntoView({ block: "center", behavior: "smooth" });
 	}
 
 	// :871-1046 appendMsg 的状态面（DOM 由 ChatMessageList 渲染；流中提交与回放同源）
 	let localSeq = 0;
-	function appendMessage(msg) {
+	function appendMessage(msg, opts) {
+		if (msg?.role === "consultant" || opts?.consult) {
+			appendConsult(msg);
+			if (getFocusState().active && msg?.role !== "user")
+				setFocusChatOpen(true);
+			return;
+		}
 		localSeq += 1;
 		const patch = {
 			messages: [...state.messages, { ...msg, id: `live-${localSeq}` }],
@@ -501,6 +661,10 @@ export function createChatWorkspaceController(deps) {
 			patch.pendingActions = merged;
 		}
 		setState(patch);
+		const previewed = offerContinuePreview(msg, `live-${localSeq}`);
+		// 专注时没进正文预览的回复（提问、确认卡、报错）要让作者看见：展开输入栏上方的回复面板
+		if (!previewed && msg?.role !== "user" && getFocusState().active)
+			setFocusChatOpen(true);
 	}
 
 	// :1912-1921 清空当前会话
@@ -701,6 +865,9 @@ export function createChatWorkspaceController(deps) {
 		restoreContext,
 		insertToChapter,
 		clearChat,
+		clearConsultLog,
+		loadChapterContext,
+		locatePreview,
 		worldModal,
 		characterModal,
 		deleteWorldEntry,
@@ -722,6 +889,8 @@ export function useChatWorkspace(controller) {
 
 	const scrollRef = useRef(null);
 	const [submitting, setSubmitting] = useState(false);
+	// 参谋问题在发送时同步提交，按当时的参谋开关分流到参谋记录（回复本身带 consultant 角色）
+	const consultNowRef = useRef(false);
 	const cardProps = {
 		bookId: controller.getBookId(),
 		onSettled: (name, args) => controller.refreshAfterWriteFor(name, args),
@@ -734,7 +903,8 @@ export function useChatWorkspace(controller) {
 		getBookId: () => controller.getBookId(),
 		getChapterId: () => controller.getChapterId(),
 		getConversationId: () => controller.currentConversationId(),
-		onAppendMessage: (msg) => controller.appendMessage(msg),
+		onAppendMessage: (msg) =>
+			controller.appendMessage(msg, { consult: consultNowRef.current }),
 		onRefreshRunStatus: (payload) => controller.refreshRunStatus(payload),
 		onSyncWatcher: () => controller.syncRunWatcher(),
 		onReload: () => controller.loadChat(),
@@ -742,6 +912,7 @@ export function useChatWorkspace(controller) {
 		scrollTarget: scrollRef,
 		cardProps,
 	});
+	consultNowRef.current = !!t.consult;
 
 	useLayoutEffect(() => {
 		controller.attachTransport(t.transport);
@@ -770,6 +941,7 @@ export function useChatWorkspace(controller) {
 				})
 			: null,
 		live: t.live,
+		typing: t.typing ?? null,
 		cardProps,
 		scrollRef,
 		transport: t.transport,

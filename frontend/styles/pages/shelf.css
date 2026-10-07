@@ -1,0 +1,115 @@
+/* 书架页（#/）与回收站弹窗。UI 优化阶段 4 从 public/style.css 原样迁入，随后按样稿 B 换装。 */
+
+/* ================= 书架页 ================= */
+.shelf-main {
+	max-width: 1080px;
+	width: 100%;
+	margin: 0 auto;
+	padding: 32px 24px 64px;
+}
+.shelf-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 24px;
+}
+.shelf-head h2 {
+	font-family: var(--serif);
+	font-size: 24px;
+	font-weight: 600;
+	letter-spacing: 1px;
+}
+
+.book-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+	gap: 16px;
+}
+.book-card {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 20px;
+	cursor: pointer;
+	box-shadow: var(--shadow);
+	transition:
+		border-color 0.15s,
+		transform 0.15s;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	min-height: 140px;
+}
+.book-card:hover {
+	border-color: var(--accent);
+	transform: translateY(-2px);
+}
+.book-card h3 {
+	font-family: var(--serif);
+	font-size: 17px;
+	font-weight: 600;
+	line-height: 1.4;
+}
+.book-card .book-intro {
+	color: var(--muted);
+	font-size: 12px;
+	display: -webkit-box;
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+	flex: 1;
+}
+.book-card .book-meta {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	color: var(--muted);
+	font-size: 12px;
+	border-top: 1px solid var(--border);
+	padding-top: 10px;
+}
+.book-card .book-del {
+	opacity: 0;
+	transition: opacity 0.15s;
+}
+.book-card:hover .book-del {
+	opacity: 1;
+}
+
+.empty-state {
+	text-align: center;
+	padding: 64px 0;
+	color: var(--muted);
+}
+.empty-state p:first-child {
+	font-family: var(--serif);
+	font-size: 17px;
+	color: var(--ink-soft);
+}
+.empty-hint {
+	font-size: 12px;
+	margin-top: 6px;
+}
+
+/* ---------- 回收站（方向报告 3.4：删书自动备份 30 天，可整册恢复） ---------- */
+.recycle-list {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	max-height: 50vh;
+	overflow-y: auto;
+}
+.recycle-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 10px 12px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+}
+.recycle-item small {
+	display: block;
+	color: var(--muted);
+	margin-top: 2px;
+}

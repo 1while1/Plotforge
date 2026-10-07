@@ -34,6 +34,7 @@ import {
 	isJsonResponse,
 	newRequestId,
 } from "../lib/chat-event-hub.js";
+import { scrollToBottom } from "../lib/scroll-follow.js";
 
 // 16×16 像素小人（戴帽书生）：字符画 → SVG rect，crispEdges 保持像素棱角（:20-51 逐字）
 const PIXEL_ROWS = [
@@ -140,8 +141,7 @@ export default function OutlineAssistantPanel({ bookId }) {
 	// 滚底（:80/:91/:193-194 逐字）
 	// biome-ignore lint/correctness/useExhaustiveDependencies: messages 变化即滚底，box 为 ref 读取、不构成依赖标识
 	useEffect(() => {
-		const box = messagesBoxRef.current;
-		if (box) box.scrollTop = box.scrollHeight;
+		scrollToBottom(messagesBoxRef.current);
 	}, [messages]);
 
 	// 复用同书的小助手会话：找标题前缀「大纲小助手」的最新一条；没有就在首次发送时创建

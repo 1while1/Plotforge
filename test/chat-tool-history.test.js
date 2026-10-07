@@ -3,6 +3,9 @@ const assert = require('node:assert/strict');
 const { db, createTempLocation, cleanup } = require('./helpers/temp-db');
 const { buildChatMessages } = require('../server/llm');
 const { executeTool } = require('../server/tools/executor');
+const {
+  TOOL_FACT_RESULT_MAX_CHARS, TOOL_FACT_TOTAL_MAX_CHARS, TOOL_FACTS_PER_RUN,
+} = require('../server/context/history-budget');
 
 async function setup(t) {
   const location = createTempLocation();
@@ -44,8 +47,14 @@ test('长工具正文预算有界，失败事实保持失败，密钥字段不�
   const history = require('../server/chat/tool-history');
   const facts = Array.from({ length: 20 }, () => history.toolFact('read_chapter', { chapterId: 113, api_key: 'sk-test-xxx' }, '[工具错误] CHAPTER_NOT_FOUND' + '超长'.repeat(5000)));
   const toolsJson = history.serializeHistory([], { _toolFacts: facts });
-  assert.ok(toolsJson.length < 30000);
+  const stored = JSON.parse(toolsJson).find(entry => entry.kind === 'run').facts;
+  assert.equal(stored.length, TOOL_FACTS_PER_RUN);
+  assert.equal(Array.from(stored[0].result).length, TOOL_FACT_RESULT_MAX_CHARS);
   assert.ok(!toolsJson.includes('sk-test-xxx'));
+  const factText = history.historyFacts([{ tools_json: toolsJson }], book.id, null);
+  const lines = factText.split(String.fromCharCode(10)).slice(1);
+  assert.ok(lines.join(String.fromCharCode(10)).length <= TOOL_FACT_TOTAL_MAX_CHARS);
+  assert.ok(lines.some(line => JSON.parse(line).status === 'failed'));
   db.run('INSERT INTO messages (book_id,role,content,tools_json) VALUES (?, ?, ?, ?)', [book.id, 'assistant', '读取失败', toolsJson]);
   const result = await buildChatMessages(book, '为什么没读到', null);
   assert.ok(result.messages[0].content.includes('failed'));

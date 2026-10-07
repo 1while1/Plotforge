@@ -10,6 +10,7 @@
 // 渲染 op 形状＝组件契约（同一份逻辑同时供 Node 双钉与组件消费，避免双实现漂移）。
 import { extractConfirmation } from "./agent-actions.js";
 import { scopeBookTitle } from "./agent-scope.js";
+import { agentToolLabel } from "./agent-tool-labels.js";
 
 // :1480（工具结果 2000 截断；历史侧 800 截断属 AgentMessageList）
 export const TOOL_RESULT_MAX = 2000;
@@ -35,7 +36,7 @@ export function toolInputText(input) {
 // :1503-1504
 export function agentToolErrorMessage(info) {
 	const i = info || {};
-	return `工具未执行：${i.code ? `[${i.code}] ` : ""}${i.toolName || ""}${
+	return `工具未执行：${i.code ? `[${i.code}] ` : ""}${agentToolLabel(i.toolName)}${
 		i.message ? ` — ${i.message}` : ""
 	}`;
 }
@@ -307,7 +308,7 @@ export function pendingActionSummaries(pendingList) {
 		return (pendingList || []).map((entry) => ({
 			id: entry.id,
 			conversationId: entry.conversationId || null,
-			summary: `${entry.toolName ? entry.toolName : "写操作"}（等你在会话里确认）`,
+			summary: `${entry.toolName ? agentToolLabel(entry.toolName) : "写操作"}（等你在会话里确认）`,
 		}));
 	} catch (_e) {
 		return [];

@@ -151,7 +151,15 @@ function finalizeText(content, state, options = {}) {
   let current = state || { status: 'finished' };
   if (['awaiting_confirmation', 'paused', 'failed', 'cancelled'].includes(current.status)) return { content: stateText(current), state: current };
   const action = options.settledAction;
-  const unverifiedWrite = !options.verifiedWrite && (looksLikeWriteOutcomeClaim(content) || looksLikeUnfulfilledWriteIntent(content));
+  const text = String(content || '');
+  const recallsPast = /(?:上(?:一|几|个|次)?轮|之前|此前|先前|过去|历史|刚才)[^。！？\n]{0,32}(?:确认|批准|写入|追加|保存|操作)|(?:确认|批准|写入|追加|保存)[^。！？\n]{0,32}(?:上(?:一|几|个|次)?轮|之前|此前|先前|过去|历史|刚才)/.test(text);
+  const chapterNumbers = [...text.matchAll(/(?:chapterId|chapter_id|章节ID|章节id|章#)\s*[:：=]?\s*(\d+)/gi)].map(match => Number(match[1]));
+  const approvedWrites = Array.isArray(options.approvedWrites) ? options.approvedWrites : [];
+  const historicalWrite = recallsPast && chapterNumbers.length > 0
+    && chapterNumbers.every(number => approvedWrites.some(write => write.chapterId === number))
+    && !/(?:本轮|这轮|刚刚|现在)[^。！？\n]{0,32}(?:已写入|已追加|已保存|写入完成|追加完成|保存完成)/.test(text);
+  const unverifiedWrite = !options.verifiedWrite && !historicalWrite
+    && (looksLikeWriteOutcomeClaim(content) || looksLikeUnfulfilledWriteIntent(content));
   if (action && ['rejected', 'failed', 'approved', 'expired'].includes(action.status)
     && (claimsPendingConfirmation(content) || (action.status === 'rejected' && unverifiedWrite))) {
     current = { ...current, reason: 'settled_confirmation_corrected', settledConfirmation: { id: action.id, status: action.status } };

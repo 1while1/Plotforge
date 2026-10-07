@@ -1,0 +1,1697 @@
+/* 写作页外壳（样稿 B）：全局导航栏 + 顶栏 + 三栏（导航 | 编辑 | 写作助手）。
+   index.html 的静态壳不在 Tailwind 扫描源内（扫到旧 class 名会反向生成工具类），所以外壳布局写成普通 CSS，
+   并一律以 #page-book 开头：本文件在 app.css 中排在 base.css（原 public/style.css）之后，靠 id 特异度稳定压过旧的同名类规则。
+   栏内样式（章节列表、编辑区、对话区）仍是旧样式，阶段 2 换装。 */
+
+#page-book {
+	flex-direction: row;
+	background: var(--mz-bg);
+}
+#page-book > .book-rail {
+	flex: 0 0 60px;
+	width: 60px;
+	min-height: 0;
+}
+#page-book > .book-main {
+	flex: 1 1 auto;
+	min-width: 0;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+}
+
+/* ---------- 顶栏：面包屑（书架 › 书 › 章）+ 会话 + 保存状态 + 模式/专注 + 两侧折叠 ---------- */
+#page-book .book-topbar {
+	height: 48px;
+	min-width: 0;
+	padding: 0 10px 0 14px;
+	gap: 4px;
+	justify-content: flex-start;
+	overflow: hidden;
+	background: var(--mz-surface);
+	border-bottom: 1px solid var(--mz-line);
+	font-family: var(--mz-ui-font);
+}
+/* 书名已在面包屑里，h1 只留给读屏 */
+#page-book .book-topbar .book-title,
+#page-book .writing-status-bar .ws-chip-book .ws-label,
+#page-book .writing-status-bar .ws-chip-chapter .ws-label,
+#page-book .writing-status-bar .ws-chip-save .ws-label {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}
+#page-book .book-crumb-link {
+	flex-shrink: 0;
+	padding: 2px 6px;
+	border-radius: 5px;
+	color: var(--mz-text-2);
+	font-size: 13px;
+	text-decoration: none;
+}
+#page-book .book-crumb-link:hover {
+	background: var(--mz-hover);
+	color: var(--mz-text);
+}
+#page-book .book-crumb-sep,
+#page-book .ws-chip-chapter::before {
+	color: var(--mz-text-3);
+	font-size: 13px;
+}
+
+#page-book .writing-status-bar {
+	flex: 1 1 auto;
+	min-width: 0;
+	flex-wrap: nowrap;
+	align-items: center;
+	gap: 6px;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: var(--mz-text-2);
+	font-size: 13px;
+}
+#page-book .writing-status-bar .ws-chip {
+	align-items: center;
+	min-width: 0;
+	white-space: nowrap;
+}
+#page-book #writing-status-book,
+#page-book #writing-status-chapter,
+#page-book #writing-status-conversation {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+#page-book .ws-chip-book {
+	flex: 0 1 auto;
+	max-width: 16em;
+	padding: 2px 6px;
+}
+#page-book .ws-chip-chapter {
+	flex: 0 1 auto;
+	gap: 6px;
+}
+#page-book .ws-chip-chapter::before {
+	content: "›";
+}
+#page-book #writing-status-chapter {
+	color: var(--mz-text);
+	font-weight: 600;
+}
+#page-book .ws-chip-conv {
+	flex: 0 1 auto;
+	margin-left: auto;
+	max-width: 18em;
+	padding-left: 12px;
+	font-size: 12px;
+	color: var(--mz-text-3);
+}
+#page-book .writing-status-bar .ws-chip-conv .ws-label {
+	color: var(--mz-text-3);
+	font-size: 12px;
+	letter-spacing: 0;
+}
+#page-book .ws-chip-save {
+	flex-shrink: 0;
+	padding-left: 10px;
+}
+#page-book #writing-status-save {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	color: var(--mz-text-3);
+	font-size: 12.5px;
+}
+#page-book #writing-status-save::before {
+	content: "";
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--mz-success);
+}
+#page-book #writing-status-save[data-state="local"]::before {
+	background: var(--mz-warn);
+}
+#page-book #writing-status-save[data-state="pending"]::before {
+	background: var(--mz-danger);
+}
+
+#page-book .book-topbar .topbar-actions {
+	flex-shrink: 0;
+	align-items: center;
+	gap: 4px;
+	margin-left: 8px;
+}
+#page-book .book-topbar .topbar-actions .btn {
+	height: 30px;
+	padding: 0 11px;
+	border-radius: 7px;
+	color: var(--mz-text-2);
+	font-family: var(--mz-ui-font);
+	font-size: 13px;
+}
+#page-book .book-topbar .topbar-actions .btn:hover {
+	background: var(--mz-hover);
+	color: var(--mz-text);
+}
+/* 专注按钮由 FocusModeOverlay 插在 #btn-toggle-left-panel 之后，用 order 排回「模式 · 专注 | 折叠」 */
+#page-book #btn-mode {
+	order: 1;
+	border-color: var(--mz-line);
+}
+#page-book #btn-mode::before {
+	content: "";
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	background: var(--mz-warn);
+}
+#page-book #btn-mode.mode-on::before {
+	background: var(--mz-accent);
+}
+#page-book .topbar-actions > [data-focus-mode-host] {
+	order: 2;
+	display: flex;
+}
+#page-book #btn-focus-mode {
+	border-color: var(--mz-line);
+}
+#page-book .book-topbar #btn-focus-mode.mode-on {
+	border-color: transparent;
+	background: var(--mz-text);
+	color: var(--mz-surface);
+}
+#page-book #btn-toggle-left-panel {
+	order: 3;
+	margin-left: 6px;
+}
+#page-book #btn-toggle-chat-panel {
+	order: 4;
+}
+#page-book .book-topbar .topbar-actions .book-panel-toggle {
+	width: 30px;
+	padding: 0;
+	justify-content: center;
+}
+#page-book .book-panel-toggle svg {
+	width: 17px;
+	height: 17px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.8;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+/* mode-on＝已收起：给按钮一个「有东西被藏起来了」的提示色 */
+#page-book .book-topbar .topbar-actions .book-panel-toggle.mode-on {
+	background: var(--mz-accent-soft);
+	color: var(--mz-accent);
+}
+
+/* ---------- 三栏：导航 | 编辑 | 写作助手 ---------- */
+/* 静态模板只在 WorkbenchResizer 未接管（无内联模板）时生效 */
+#page-book .workbench {
+	grid-template-columns: 264px minmax(0, 1.6fr) minmax(0, 1fr);
+}
+#page-book .workbench.left-collapsed {
+	grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+}
+#page-book .workbench.chat-collapsed {
+	grid-template-columns: 264px minmax(0, 1fr);
+}
+#page-book .workbench.left-collapsed.chat-collapsed {
+	grid-template-columns: minmax(0, 1fr);
+}
+#page-book .workbench > .panel-chat {
+	border-right: 0;
+	border-left: 1px solid var(--border);
+	background: var(--mz-surface-2);
+	font-family: var(--mz-ui-font);
+}
+#page-book .workbench.resizable > .panel-chat {
+	border-left: 0;
+}
+#page-book .workbench.chat-collapsed > .panel-chat,
+#page-book .workbench.chat-collapsed > .col-divider[data-side="right"] {
+	display: none;
+}
+
+/* ---------- 左栏：章节栏（筛选 / 卷分组 / 行尾字数进度 / 底部统计）与其余模块列表 ---------- */
+#page-book .panel-left {
+	background: var(--mz-surface);
+	border-right-color: var(--mz-line);
+	font-family: var(--mz-ui-font);
+}
+/* 页签由导航栏驱动（BookRail 点这里的 .tab），这一行只做视觉隐藏 */
+#page-book .panel-left > .tabs {
+	display: none;
+}
+#page-book .panel-left .tab-pane {
+	padding: 12px 12px 14px;
+}
+#page-book .panel-left .pane-title {
+	color: var(--mz-text);
+	font-size: 13px;
+	font-weight: 700;
+	letter-spacing: 0;
+}
+#page-book .panel-left .module-workbench-link {
+	display: flex;
+	align-items: center;
+	margin: 0 0 12px;
+	padding: 7px 10px;
+	border: 1px solid var(--mz-line);
+	border-radius: 7px;
+	background: var(--mz-surface-2);
+	color: var(--mz-text-2);
+	font-size: 12.5px;
+}
+#page-book .panel-left .module-workbench-link:hover {
+	border-color: var(--mz-accent);
+	color: var(--mz-accent);
+}
+
+#page-book #tab-chapters {
+	display: flex;
+	flex-direction: column;
+	padding: 0;
+	overflow: hidden;
+}
+#page-book #tab-chapters .chapter-pane-head {
+	flex-shrink: 0;
+	margin: 0;
+	padding: 12px 8px 8px 14px;
+}
+#page-book .chapter-total {
+	color: var(--mz-text-3);
+	font-weight: 600;
+}
+#page-book #tab-chapters .pane-head-btns {
+	display: flex;
+	gap: 0;
+	width: auto;
+}
+#page-book #tab-chapters .pane-head-btns .pane-icon-btn {
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	justify-content: center;
+	border: 0;
+	border-radius: 7px;
+	background: transparent;
+	color: var(--mz-text-2);
+}
+#page-book #tab-chapters .pane-head-btns .pane-icon-btn:hover {
+	background: var(--mz-hover);
+	color: var(--mz-text);
+}
+#page-book .pane-icon-btn svg {
+	width: 16px;
+	height: 16px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.8;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+#page-book .chapter-filter {
+	display: flex;
+	flex-shrink: 0;
+	gap: 4px;
+	padding: 0 14px 8px;
+}
+#page-book .chapter-filter:empty {
+	display: none;
+}
+#page-book .chapter-filter-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 0 10px;
+	border: 1px solid var(--mz-line);
+	border-radius: 999px;
+	background: transparent;
+	color: var(--mz-text-2);
+	font: 12px / 22px var(--mz-ui-font);
+	cursor: pointer;
+}
+#page-book .chapter-filter-chip:hover {
+	color: var(--mz-text);
+}
+#page-book .chapter-filter-chip .n {
+	color: var(--mz-text-3);
+	font-size: 11px;
+}
+#page-book .chapter-filter-chip.on {
+	border-color: transparent;
+	background: var(--mz-accent-soft);
+	color: var(--mz-accent);
+	font-weight: 600;
+}
+#page-book .chapter-filter-chip.on .n {
+	color: inherit;
+}
+
+#page-book #chapter-list {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	gap: 1px;
+	padding: 0 8px 12px;
+}
+#page-book #chapter-list .volume-row {
+	position: relative;
+	gap: 6px;
+	margin-top: 10px;
+	padding: 6px 8px 4px;
+	border-radius: 6px;
+	background: transparent;
+}
+#page-book #chapter-list .volume-row:first-child {
+	margin-top: 0;
+}
+#page-book #chapter-list .volume-row:hover {
+	background: var(--mz-hover);
+}
+#page-book #chapter-list .vol-toggle {
+	width: 10px;
+	color: var(--mz-text-3);
+	font-size: 10px;
+}
+#page-book #chapter-list .vol-name {
+	color: var(--mz-text-3);
+	font-family: var(--mz-ui-font);
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+}
+#page-book #chapter-list .vol-count,
+#page-book #chapter-list .vol-words {
+	padding: 0;
+	background: transparent;
+	color: var(--mz-text-3);
+	font-size: 11.5px;
+	font-variant-numeric: tabular-nums;
+}
+#page-book #chapter-list .vol-words::before {
+	content: "· ";
+}
+#page-book #chapter-list .chapter-row {
+	position: relative;
+	gap: 8px;
+	margin-left: 0;
+	padding: 6px 8px;
+	border: 0;
+	border-radius: 7px;
+	transition: background 0.12s ease;
+}
+#page-book #chapter-list .item-row:hover,
+#page-book #chapter-list .item-row.active:hover {
+	border-color: transparent;
+	background: var(--mz-hover);
+	box-shadow: none;
+	transform: none;
+}
+#page-book #chapter-list .item-row.active,
+#page-book #chapter-list .item-row.active:hover {
+	background: var(--mz-accent-soft);
+}
+#page-book #chapter-list .item-name {
+	color: var(--mz-text);
+	font-size: 13.5px;
+}
+#page-book #chapter-list .item-row.active .item-name {
+	color: var(--mz-accent);
+	font-weight: 600;
+}
+/* 行内操作浮在行尾、悬停或键盘聚焦时才出现，不占标题宽度 */
+#page-book #chapter-list .item-ops {
+	position: absolute;
+	top: 50%;
+	right: 4px;
+	padding-left: 6px;
+	border-radius: 6px;
+	background: var(--mz-hover);
+	transform: translateY(-50%);
+	pointer-events: none;
+}
+#page-book #chapter-list .item-row.active .item-ops {
+	background: var(--mz-accent-soft);
+}
+#page-book #chapter-list .item-row:hover .item-ops,
+#page-book #chapter-list .item-row:focus-within .item-ops,
+#page-book #chapter-list .volume-row:hover .item-ops,
+#page-book #chapter-list .volume-row:focus-within .item-ops {
+	opacity: 1;
+	pointer-events: auto;
+}
+#page-book #chapter-list .lock-badge {
+	margin-left: 0;
+	padding: 0;
+	border: 0;
+	color: var(--mz-text-3);
+	font-size: 11.5px;
+}
+#page-book #chapter-list .lock-badge.relock {
+	color: var(--mz-warn);
+}
+#page-book #chapter-list .lock-badge.reindex-missing {
+	padding: 0 6px;
+	border-radius: 999px;
+	background: var(--mz-warn-soft);
+	color: var(--mz-warn);
+}
+#page-book .ch-meta {
+	display: inline-flex;
+	flex-shrink: 0;
+	align-items: center;
+	gap: 6px;
+	color: var(--mz-text-3);
+	font-size: 11.5px;
+	font-variant-numeric: tabular-nums;
+}
+#page-book .ch-progress {
+	width: 32px;
+	height: 4px;
+	overflow: hidden;
+	border-radius: 2px;
+	background: var(--mz-line);
+}
+#page-book .ch-progress-fill {
+	display: block;
+	height: 100%;
+	background: var(--mz-accent);
+}
+#page-book .ch-meta.done .ch-progress-fill {
+	background: var(--mz-text-3);
+}
+
+#page-book .chapter-foot {
+	display: flex;
+	flex-shrink: 0;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 7px 8px 7px 14px;
+	border-top: 1px solid var(--mz-line);
+	color: var(--mz-text-3);
+	font-size: 12px;
+}
+#page-book .chapter-foot:empty {
+	display: none;
+}
+#page-book .chapter-target-btn {
+	padding: 2px 6px;
+	border: 0;
+	border-radius: 5px;
+	background: transparent;
+	color: var(--mz-text-3);
+	font: inherit;
+	cursor: pointer;
+}
+#page-book .chapter-target-btn:hover {
+	background: var(--mz-hover);
+	color: var(--mz-text);
+}
+
+/* 正文内续写预览（「正文内预览」呈现方式）：贴正文末尾的浅色段，接受后才写入 */
+#page-book .continue-preview {
+	margin: 4px 0 16px;
+	padding: 4px 0 0 14px;
+	border-left: 3px solid var(--mz-accent);
+}
+#page-book .continue-preview-label {
+	margin-bottom: 4px;
+	color: var(--mz-accent);
+	font-size: 12px;
+	font-weight: 600;
+}
+#page-book .continue-preview-text {
+	color: var(--mz-text-3);
+	font-family: var(--mz-read-font);
+	font-size: 17px;
+	line-height: 1.95;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+#page-book .continue-preview-ops {
+	display: flex;
+	gap: 6px;
+	margin-top: 10px;
+}
+#page-book .editor-doc .continue-preview-ops .btn {
+	height: 30px;
+	padding: 0 12px;
+	border: 1px solid var(--mz-line-2);
+	border-radius: 7px;
+	background: var(--mz-surface);
+	color: var(--mz-text);
+	font-family: var(--mz-ui-font);
+	font-size: 13px;
+}
+#page-book .editor-doc .continue-preview-ops .btn-ghost {
+	border-color: transparent;
+	background: transparent;
+	color: var(--mz-text-2);
+}
+#page-book .continue-preview-ops .continue-accept {
+	border-color: transparent;
+	background: var(--mz-accent);
+	color: var(--mz-accent-fg);
+	font-weight: 600;
+}
+#page-book .continue-preview-ops .continue-accept:hover {
+	background: var(--mz-accent-hover);
+}
+
+/* ---------- AI 面板：三标签头 / 会话行 / 消息卡片 / 步骤清单 / 输入卡 ---------- */
+.mz-sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+}
+#page-book .panel-chat .ai-pane {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-height: 0;
+}
+#page-book .panel-chat .ai-pane[hidden] {
+	display: none;
+}
+#page-book .panel-chat .ai-head {
+	gap: 4px;
+	padding: 6px 8px 0 10px;
+	border-bottom: 1px solid var(--mz-line);
+	background: var(--mz-surface);
+}
+#page-book .ai-tabs {
+	display: flex;
+	flex: 1 1 auto;
+	gap: 2px;
+	min-width: 0;
+}
+#page-book .ai-tab {
+	padding: 8px 10px 9px;
+	border: 0;
+	border-bottom: 2px solid transparent;
+	background: transparent;
+	color: var(--mz-text-2);
+	font: 13px var(--mz-ui-font);
+	white-space: nowrap;
+	cursor: pointer;
+}
+#page-book .ai-tab:hover {
+	color: var(--mz-text);
+}
+#page-book .ai-tab.on {
+	border-bottom-color: var(--mz-accent);
+	color: var(--mz-text);
+	font-weight: 600;
+}
+#page-book .ai-head-btns {
+	display: flex;
+	flex-shrink: 0;
+	align-items: center;
+	gap: 2px;
+	padding-bottom: 4px;
+}
+#page-book .ai-icon-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	padding: 0;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--mz-text-3);
+	cursor: pointer;
+}
+#page-book .ai-icon-btn:hover {
+	background: var(--mz-hover);
+	color: var(--mz-text);
+}
+#page-book .ai-icon-btn svg {
+	width: 16px;
+	height: 16px;
+}
+
+#page-book .ai-sess {
+	display: flex;
+	flex-shrink: 0;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 10px 6px 12px;
+	border-bottom: 1px solid var(--mz-line);
+	background: var(--mz-surface);
+}
+#page-book .ai-sess #writing-conversation-select {
+	flex: 0 1 auto;
+	min-width: 0;
+	max-width: 46%;
+	padding: 3px 4px;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--mz-text);
+	font: 600 13px var(--mz-ui-font);
+	text-overflow: ellipsis;
+	cursor: pointer;
+}
+#page-book .ai-sess #writing-conversation-select:hover {
+	background: var(--mz-hover);
+}
+#page-book .ai-sess .ctx-meter {
+	flex: 1 1 auto;
+	gap: 6px;
+	min-width: 0;
+	padding: 0;
+	border: 0;
+	color: var(--mz-text-3);
+	font-size: 12px;
+}
+#page-book .ai-sess .ctx-bar {
+	flex: 0 0 36px;
+	height: 4px;
+	margin-left: auto;
+	background: var(--mz-line);
+}
+#page-book .ai-sess .ctx-fill {
+	background: var(--mz-accent);
+}
+#page-book .ai-sess .ctx-fill.ctx-warn {
+	background: var(--mz-danger);
+}
+#page-book .ai-sess .ctx-text {
+	flex: 0 1 auto;
+	min-width: 0;
+	font-variant-numeric: tabular-nums;
+}
+#page-book .ai-sess .ctx-meter .btn {
+	flex-shrink: 0;
+	height: 24px;
+	padding: 0 6px;
+	border: 0;
+	border-radius: 5px;
+	color: var(--mz-text-3);
+	font-size: 12px;
+}
+#page-book .ai-sess .ctx-meter .btn:hover {
+	background: var(--mz-hover);
+	color: var(--mz-accent);
+}
+
+#page-book .panel-chat .chat-messages,
+#page-book .panel-chat .consult-messages {
+	gap: 14px;
+	padding: 14px;
+}
+#page-book .panel-chat .consult-messages {
+	display: flex;
+	flex: 1;
+	flex-direction: column;
+	min-height: 0;
+	overflow-y: auto;
+}
+#page-book .panel-chat .msg {
+	max-width: 100%;
+}
+#page-book .panel-chat .msg-role {
+	color: var(--mz-text-3);
+	letter-spacing: 0.5px;
+}
+#page-book .panel-chat .msg.user {
+	max-width: 88%;
+}
+#page-book .panel-chat .msg.user .msg-role {
+	display: none;
+}
+#page-book .panel-chat .msg-bubble {
+	font-size: 13.5px;
+	line-height: 1.85;
+}
+#page-book .panel-chat .msg.user .msg-bubble {
+	border: 1px solid var(--mz-line);
+	border-radius: 12px 12px 4px 12px;
+	background: var(--mz-surface);
+	color: var(--mz-text);
+}
+#page-book .panel-chat .msg.user .msg-bubble.clamped::after {
+	background: linear-gradient(transparent, var(--mz-surface));
+}
+/* 助手与参谋的回复整条是一张卡：步骤清单 → 正文 → 操作 */
+#page-book .panel-chat .msg.assistant,
+#page-book .panel-chat .msg.consultant {
+	gap: 8px;
+	width: 100%;
+	padding: 10px 14px 12px;
+	border: 1px solid var(--mz-line);
+	border-radius: 10px;
+	background: var(--mz-surface);
+}
+#page-book .panel-chat .msg.consultant {
+	border-left: 3px solid var(--mz-warn);
+}
+#page-book .panel-chat .msg.assistant .msg-bubble,
+#page-book .panel-chat .msg.consultant .msg-bubble {
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: var(--mz-text);
+}
+#page-book .panel-chat .msg.assistant .msg-bubble.clamped::after,
+#page-book .panel-chat .msg.consultant .msg-bubble.clamped::after {
+	background: linear-gradient(transparent, var(--mz-surface));
+}
+#page-book .panel-chat .msg.assistant.msg-confirm .msg-bubble {
+	padding-left: 10px;
+	border-left: 3px solid var(--mz-accent);
+}
+#page-book .panel-chat .msg-actions {
+	flex-wrap: wrap;
+	gap: 6px;
+	padding-top: 8px;
+	border-top: 1px solid var(--mz-line);
+}
+#page-book .panel-chat .msg.user .msg-actions {
+	padding-top: 0;
+	border-top: 0;
+}
+#page-book .panel-chat .msg-actions .btn {
+	height: 28px;
+	padding: 0 10px;
+	border: 1px solid var(--mz-line-2);
+	border-radius: 7px;
+	background: var(--mz-surface);
+	color: var(--mz-text);
+	font-size: 12.5px;
+}
+#page-book .panel-chat .msg-actions .btn-ghost {
+	border-color: transparent;
+	color: var(--mz-text-2);
+}
+#page-book .panel-chat .msg-actions .btn:hover {
+	border-color: var(--mz-accent);
+	color: var(--mz-accent);
+}
+#page-book .panel-chat .msg-reasoning,
+#page-book .panel-chat .msg-phase {
+	border-color: var(--mz-line-2);
+	background: var(--mz-surface-2);
+	color: var(--mz-text-3);
+}
+
+/* 步骤清单：一行一步，点开看入参与结果 */
+#page-book .panel-chat .tool-call.step {
+	max-width: 100%;
+	margin: 0;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	font-size: 12.5px;
+}
+#page-book .panel-chat .tool-call.step summary {
+	gap: 8px;
+	padding: 2px 0;
+	color: var(--mz-text-2);
+}
+#page-book .panel-chat .tool-call.step summary:hover .step-name {
+	color: var(--mz-text);
+}
+#page-book .panel-chat .tool-call.step:not(:has(+ .tool-call.step)) {
+	padding-bottom: 8px;
+	border-bottom: 1px solid var(--mz-line);
+}
+#page-book .step-check {
+	display: inline-grid;
+	flex-shrink: 0;
+	place-items: center;
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+	background: var(--mz-accent-soft);
+	color: var(--mz-accent);
+	font-size: 10px;
+	font-weight: 700;
+}
+#page-book .step-hint {
+	min-width: 0;
+	overflow: hidden;
+	color: var(--mz-text-3);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+#page-book .panel-chat .tool-call.step .tool-call-body pre {
+	margin: 4px 0 6px 24px;
+	background: var(--mz-surface-2);
+	color: var(--mz-text-2);
+}
+
+#page-book .panel-chat .typing {
+	color: var(--mz-text-3);
+}
+#page-book .ai-pane-note {
+	display: flex;
+	flex-shrink: 0;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 8px 14px;
+	border-bottom: 1px solid var(--mz-line);
+	background: var(--mz-surface);
+	color: var(--mz-text-3);
+	font-size: 12px;
+	line-height: 1.6;
+}
+#page-book .ai-pane-note-ops {
+	display: flex;
+	flex-shrink: 0;
+	gap: 2px;
+}
+#page-book .ai-link-btn {
+	flex-shrink: 0;
+	padding: 2px 6px;
+	border: 0;
+	border-radius: 5px;
+	background: transparent;
+	color: var(--mz-accent);
+	font: 12px var(--mz-ui-font);
+	cursor: pointer;
+}
+#page-book .ai-link-btn:hover {
+	background: var(--mz-accent-soft);
+}
+#page-book .ai-link-btn:disabled {
+	color: var(--mz-text-3);
+	cursor: default;
+}
+#page-book .ai-empty {
+	margin: 18vh auto 0;
+	max-width: 260px;
+	color: var(--mz-text-3);
+	font-size: 12.5px;
+	line-height: 1.8;
+	text-align: center;
+}
+#page-book .ai-empty p:first-child {
+	color: var(--mz-text-2);
+	font-size: 14px;
+	font-weight: 600;
+}
+
+/* 本章上下文 */
+#page-book .ctx-pane-body {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	padding: 14px;
+}
+#page-book .ctx-summary {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 8px;
+	margin-bottom: 12px;
+}
+#page-book .ctx-summary > div {
+	display: flex;
+	flex-direction: column;
+	padding: 10px 12px;
+	border: 1px solid var(--mz-line);
+	border-radius: 8px;
+	background: var(--mz-surface);
+}
+#page-book .ctx-summary-val {
+	color: var(--mz-text);
+	font-size: 17px;
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+}
+#page-book .ctx-summary-label {
+	color: var(--mz-text-3);
+	font-size: 12px;
+}
+#page-book .ctx-parts {
+	margin: 0;
+	padding: 4px 12px;
+	border: 1px solid var(--mz-line);
+	border-radius: 8px;
+	background: var(--mz-surface);
+	list-style: none;
+}
+#page-book .ctx-parts li {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 72px 52px;
+	align-items: center;
+	gap: 10px;
+	padding: 7px 0;
+	font-size: 12.5px;
+}
+#page-book .ctx-parts li + li {
+	border-top: 1px solid var(--mz-line);
+}
+#page-book .ctx-part-name {
+	overflow: hidden;
+	color: var(--mz-text);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+#page-book .ctx-part-tag {
+	margin-left: 6px;
+	padding: 0 6px;
+	border-radius: 999px;
+	background: var(--mz-warn-soft);
+	color: var(--mz-warn);
+	font-size: 11px;
+}
+#page-book .ctx-part-bar {
+	height: 4px;
+	overflow: hidden;
+	border-radius: 2px;
+	background: var(--mz-line);
+}
+#page-book .ctx-part-bar i {
+	display: block;
+	height: 100%;
+	background: var(--mz-accent);
+}
+#page-book .ctx-parts li.truncated .ctx-part-bar i {
+	background: var(--mz-warn);
+}
+#page-book .ctx-part-val {
+	color: var(--mz-text-3);
+	font-variant-numeric: tabular-nums;
+	text-align: right;
+}
+
+/* 输入卡 */
+#page-book .panel-chat .chat-input {
+	padding: 10px 12px 12px;
+	border-top: 0;
+}
+#page-book .panel-chat .composer-card {
+	border-color: var(--mz-line-2);
+	border-radius: 10px;
+	background: var(--mz-surface);
+}
+#page-book .panel-chat .composer-card:focus-within {
+	border-color: var(--mz-accent);
+}
+#page-book .panel-chat .composer-card textarea {
+	padding: 10px 12px 2px;
+	color: var(--mz-text);
+	font: 13.5px / 1.7 var(--mz-ui-font);
+}
+#page-book .panel-chat .consult-pill {
+	border-color: var(--mz-line-2);
+	color: var(--mz-text-2);
+	font-family: var(--mz-ui-font);
+}
+#page-book .panel-chat .consult-pill.mode-on {
+	border-color: var(--mz-warn);
+	background: var(--mz-warn-soft);
+	color: var(--mz-warn);
+}
+#page-book .panel-chat #btn-send {
+	height: 30px;
+	padding: 0 14px;
+	border: 0;
+	border-radius: 8px;
+	background: var(--mz-accent);
+	color: var(--mz-accent-fg);
+	font: 600 13px var(--mz-ui-font);
+}
+#page-book .panel-chat #btn-send:hover:not(:disabled) {
+	background: var(--mz-accent-hover);
+}
+#page-book .panel-chat #btn-send:disabled {
+	opacity: 0.6;
+}
+
+/* ---------- 编辑区：顶部工具条 + 居中文档（眉题 / 大标题 / 节拍框 / 正文） ---------- */
+#page-book .panel-editor {
+	padding: 0;
+	overflow: hidden;
+	background: var(--mz-surface);
+	container-type: inline-size;
+	font-family: var(--mz-ui-font);
+}
+#page-book #editor-body:not(.hidden) {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+}
+#page-book #editor-empty {
+	padding: 22vh 24px 0;
+	color: var(--mz-text-3);
+}
+#page-book #editor-empty p:first-child {
+	color: var(--mz-text-2);
+	font-family: var(--mz-ui-font);
+	font-size: 16px;
+	font-weight: 600;
+}
+
+#page-book .editor-toolbar {
+	display: flex;
+	flex-shrink: 0;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px 10px;
+	min-height: 49px;
+	padding: 8px 20px;
+	border-bottom: 1px solid var(--mz-line);
+}
+#page-book .ed-status {
+	padding: 1px 10px;
+	border-radius: 999px;
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 20px;
+	white-space: nowrap;
+}
+#page-book .ed-status-draft {
+	background: var(--mz-warn-soft);
+	color: var(--mz-warn);
+}
+#page-book .ed-status-locked {
+	background: var(--mz-accent-soft);
+	color: var(--mz-accent);
+}
+#page-book .ed-status-relock {
+	background: var(--mz-warn-soft);
+	color: var(--mz-danger);
+}
+#page-book .ed-progress {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	color: var(--mz-text-2);
+	font-size: 12.5px;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+#page-book .ed-progress-bar {
+	width: 110px;
+	height: 5px;
+	overflow: hidden;
+	border-radius: 3px;
+	background: var(--mz-line);
+}
+#page-book .ed-progress-fill {
+	display: block;
+	height: 100%;
+	background: var(--mz-accent);
+	transition: width 0.2s ease;
+}
+#page-book .editor-toolbar .editor-actions {
+	display: flex;
+	flex-shrink: 1;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px;
+	min-width: 0;
+	margin-left: auto;
+}
+#page-book #editor-body .editor-toolbar .btn {
+	height: 30px;
+	padding: 0 11px;
+	border: 1px solid transparent;
+	border-radius: 7px;
+	background: transparent;
+	color: var(--mz-text-2);
+	font-family: var(--mz-ui-font);
+	font-size: 13px;
+}
+#page-book #editor-body .editor-toolbar .btn:hover {
+	background: var(--mz-hover);
+	color: var(--mz-text);
+}
+#page-book #editor-body #btn-enter-refine {
+	border-color: var(--mz-line-2);
+	color: var(--mz-text);
+}
+/* 未定稿时「定稿」是本栏主操作；已定稿（mode-on，文案「解除定稿」）退为描边按钮 */
+#page-book #editor-body #btn-lock-chapter {
+	border-color: transparent;
+	background: var(--mz-accent);
+	color: var(--mz-accent-fg);
+	font-weight: 600;
+}
+#page-book #editor-body #btn-lock-chapter:hover {
+	background: var(--mz-accent-hover);
+}
+#page-book #editor-body #btn-lock-chapter.mode-on {
+	border-color: var(--mz-line-2);
+	background: transparent;
+	color: var(--mz-text-2);
+	font-weight: 400;
+}
+/* 保存按钮 mode-on＝有未保存修改（停笔 3 秒自动保存） */
+#page-book #editor-body #btn-save-chapter.mode-on {
+	border-color: transparent;
+	background: var(--mz-warn-soft);
+	color: var(--mz-warn);
+}
+#page-book #editor-body .editor-toolbar .ed-icon-btn {
+	width: 30px;
+	padding: 0;
+	justify-content: center;
+}
+#page-book .ed-icon-btn svg {
+	width: 16px;
+	height: 16px;
+}
+#page-book #editor-body .relock-banner {
+	flex-shrink: 0;
+	margin: 10px 20px 0;
+}
+
+#page-book .editor-canvas {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+}
+#page-book .editor-doc {
+	box-sizing: content-box;
+	max-width: var(--mz-read-width);
+	margin: 0 auto;
+	padding: 36px 32px 72px;
+}
+#page-book .editor-eyebrow {
+	min-height: 19px;
+	margin-bottom: 4px;
+	color: var(--mz-text-3);
+	font-size: 12.5px;
+}
+#page-book .editor-doc .editor-head {
+	margin-bottom: 0;
+}
+#page-book .editor-doc .chapter-title-input {
+	padding: 2px 0;
+	border: 0;
+	border-bottom: 1px solid transparent;
+	color: var(--mz-text);
+	font-family: var(--mz-ui-font);
+	font-size: 27px;
+	font-weight: 700;
+	letter-spacing: 0.5px;
+}
+#page-book .editor-doc .chapter-title-input:focus {
+	border-bottom-color: var(--mz-line-2);
+}
+#page-book .chapter-beat-box {
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+	margin: 16px 0 22px;
+	padding: 8px 12px;
+	border: 1px dashed var(--mz-line-2);
+	border-radius: 8px;
+	cursor: text;
+}
+#page-book .chapter-beat-box:focus-within {
+	border-color: var(--mz-accent);
+}
+#page-book .chapter-beat-label {
+	flex-shrink: 0;
+	color: var(--mz-text);
+	font-size: 13px;
+	font-weight: 600;
+}
+#page-book .chapter-beat-box .chapter-beat {
+	flex: 1;
+	min-width: 0;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	color: var(--mz-text-2);
+	font-family: var(--mz-ui-font);
+	font-size: 13px;
+}
+#page-book .editor-doc .chapter-content {
+	display: block;
+	min-height: 52vh;
+	padding: 0;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	color: var(--mz-text);
+	font-family: var(--mz-read-font);
+	font-size: 17px;
+	line-height: 1.95;
+	resize: none;
+}
+/* 正文随内容长高，由外层文档区统一滚动；不支持 field-sizing 的浏览器退回到框内滚动 */
+@supports (field-sizing: content) {
+	#page-book .editor-doc .chapter-content {
+		field-sizing: content;
+		overflow: hidden;
+	}
+}
+#page-book .editor-doc .editor-foot {
+	align-items: center;
+	gap: 8px;
+	margin-top: 8px;
+	padding: 8px 0 0;
+	border-top: 1px solid var(--mz-line);
+}
+#page-book .editor-doc .word-count {
+	color: var(--mz-text-3);
+	font-variant-numeric: tabular-nums;
+}
+#page-book .editor-doc .summary-box {
+	margin-top: 18px;
+	border-color: var(--mz-line);
+	border-left-color: var(--mz-accent);
+	border-radius: 8px;
+	background: var(--mz-surface-2);
+}
+#page-book .editor-doc .summary-label {
+	color: var(--mz-accent);
+	font-weight: 600;
+}
+#page-book .editor-doc #summary-text {
+	color: var(--mz-text-2);
+	line-height: 1.8;
+}
+
+@container (max-width: 560px) {
+	#page-book .editor-toolbar {
+		padding: 8px 12px;
+	}
+	#page-book .ed-progress-text {
+		display: none;
+	}
+	#page-book .editor-doc {
+		padding: 24px 18px 56px;
+	}
+}
+
+/* ---------- 专注模式：只留正文 + 底部一条 AI 输入栏（回复面板按需在输入栏上方展开） ---------- */
+/* 面包屑头平时不占位，专注时在编辑区顶部居中 */
+#page-book .focus-head {
+	display: none;
+}
+body.focus-mode #page-book .focus-head {
+	display: flex;
+	flex-shrink: 0;
+	justify-content: center;
+	padding: 14px 16px 0;
+}
+#page-book .focus-crumbs {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 4px 6px 4px 12px;
+	border: 1px solid var(--mz-line);
+	border-radius: 999px;
+	background: var(--mz-surface);
+	font-family: var(--mz-ui-font);
+}
+#page-book .focus-crumbs .crumb {
+	display: flex;
+	align-items: center;
+}
+/* 全局 select 自带描边与箭头，面包屑里只要裸文字 */
+#page-book .focus-crumbs select {
+	max-width: 180px;
+	padding: 2px 18px 2px 4px;
+	border: 0;
+	border-radius: 6px;
+	background-color: transparent;
+	background-position: right 4px center;
+	box-shadow: none;
+	color: var(--mz-text);
+	font: 13px var(--mz-ui-font);
+}
+#page-book .focus-crumbs select:hover {
+	background-color: var(--mz-hover);
+}
+#page-book .focus-crumbs .crumb-sep {
+	color: var(--mz-text-3);
+	font-size: 12px;
+}
+
+body.focus-mode #page-book > .book-rail,
+body.focus-mode #page-book .workbench > .panel-left,
+body.focus-mode #page-book .workbench > .col-divider,
+body.focus-mode #page-book #btn-toggle-left-panel,
+body.focus-mode #page-book #btn-toggle-chat-panel,
+body.focus-mode #page-book .ws-chip-conv,
+body.focus-mode #page-book .editor-toolbar,
+body.focus-mode #page-book .summary-box {
+	display: none;
+}
+body.focus-mode #page-book .workbench {
+	/* biome-ignore lint/complexity/noImportantStyles: WorkbenchResizer 写的是内联列宽，只有 !important 压得过 */
+	grid-template-columns: minmax(0, 1fr) !important;
+}
+body.focus-mode #page-book .panel-editor {
+	display: flex;
+	flex-direction: column;
+	border: 0;
+}
+body.focus-mode #page-book #editor-body {
+	flex: 1;
+	min-height: 0;
+}
+/* 给底部输入栏留出位置，最后几行不被盖住 */
+body.focus-mode #page-book .editor-doc {
+	padding-bottom: 200px;
+}
+
+/* 写作助手抽离成底部浮条：即使原来是收起态也要出现 */
+body.focus-mode #page-book .workbench > .panel-chat,
+body.focus-mode #page-book .workbench.chat-collapsed > .panel-chat {
+	position: fixed;
+	bottom: 18px;
+	left: 50%;
+	z-index: 30;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	width: min(760px, calc(100vw - 48px));
+	max-height: calc(100vh - 140px);
+	border: 0;
+	background: transparent;
+	transform: translateX(-50%);
+	pointer-events: none;
+}
+body.focus-mode #page-book .panel-chat > * {
+	pointer-events: auto;
+}
+body.focus-mode #page-book .panel-chat .ai-head,
+body.focus-mode #page-book .panel-chat .ai-sess {
+	display: none;
+}
+body.focus-mode:not(.focus-chat-open) #page-book .panel-chat .ai-pane {
+	display: none;
+}
+body.focus-mode.focus-chat-open #page-book .panel-chat .ai-pane:not([hidden]) {
+	flex: 1 1 auto;
+	min-height: 0;
+	max-height: 52vh;
+	overflow: hidden;
+	border: 1px solid var(--mz-line);
+	border-radius: 12px;
+	background: var(--mz-surface-2);
+	box-shadow: var(--mz-shadow-pop);
+}
+body.focus-mode #page-book .panel-chat .chat-input {
+	padding: 0;
+}
+body.focus-mode #page-book .panel-chat .composer-card {
+	border-color: var(--mz-line-2);
+	border-radius: 12px;
+	box-shadow: var(--mz-shadow-pop);
+}
+body.focus-mode #page-book .panel-chat .composer-card textarea {
+	min-height: 44px;
+}
+#page-book .panel-chat .focus-chat-toggle {
+	height: 26px;
+	margin-left: 6px;
+	padding: 0 10px;
+	border: 1px solid var(--mz-line-2);
+	border-radius: 999px;
+	background: transparent;
+	color: var(--mz-text-2);
+	font: 12px var(--mz-ui-font);
+	cursor: pointer;
+}
+#page-book .panel-chat .focus-chat-toggle:hover,
+#page-book .panel-chat .focus-chat-toggle.on {
+	border-color: var(--mz-accent);
+	color: var(--mz-accent);
+}
+
+/* ---------- 暗色主题（阶段 3 只覆盖写作页） ----------
+   栏内仍有不少旧样式读 base.css 的纸墨变量；写作页显示时把这些变量整体改指到令牌，
+   挂在 body 上是为了让弹窗、提示条这类挂在 body 下的节点一起变暗。其他页面不受影响。 */
+:root[data-theme="dark"] body:has(> #page-book:not(.hidden)) {
+	color-scheme: dark;
+	--paper: var(--mz-surface);
+	--recessed: var(--mz-surface-2);
+	--surface: var(--mz-surface-2);
+	--ink: var(--mz-text);
+	--ink-soft: var(--mz-text-2);
+	--muted: var(--mz-text-3);
+	--border: var(--mz-line);
+	--border-strong: var(--mz-line-2);
+	--accent: var(--mz-accent);
+	--accent-hover: var(--mz-accent-hover);
+	--accent-soft: var(--mz-accent-soft);
+	--danger: var(--mz-danger);
+	--shadow: 0 1px 3px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.3);
+	--bg-soft: var(--mz-surface-2);
+	--warn: var(--mz-warn);
+	--text: var(--mz-text);
+	--text-muted: var(--mz-text-3);
+	background: var(--mz-bg);
+	color: var(--mz-text);
+}
+
+/* 旧样式里写死的浅底与深色悬停，暗色下会刺眼或看不见，逐条改指到令牌 */
+/* biome-ignore lint/style/noDescendingSpecificity: 前面已按令牌写过悬停的具体按钮理应继续优先，这里只兜底旧样式 */
+:root[data-theme="dark"] body:has(> #page-book:not(.hidden)) .btn:hover,
+:root[data-theme="dark"] body:has(> #page-book:not(.hidden)) .icon-btn:hover,
+:root[data-theme="dark"]
+	body:has(> #page-book:not(.hidden))
+	#btn-mode.mode-on:hover,
+:root[data-theme="dark"]
+	body:has(> #page-book:not(.hidden))
+	.drift-badge:is(.error, .failed) {
+	background: rgba(255, 255, 255, 0.06);
+}
+/* biome-ignore lint/style/noDescendingSpecificity: 同上，只兜底旧样式的目录行悬停 */
+:root[data-theme="dark"] body:has(> #page-book:not(.hidden)) .item-row:hover {
+	background: rgba(255, 255, 255, 0.06);
+}
+/* biome-ignore lint/style/noDescendingSpecificity: 同上 */
+:root[data-theme="dark"] body:has(> #page-book:not(.hidden)) .volume-row:hover {
+	background: rgba(255, 255, 255, 0.06);
+}
+:root[data-theme="dark"]
+	body:has(> #page-book:not(.hidden))
+	:is(.btn-stop:hover, .d-old, .drift-badge.major) {
+	background: color-mix(in srgb, var(--mz-danger) 14%, transparent);
+}
+:root[data-theme="dark"] body:has(> #page-book:not(.hidden)) .btn-danger {
+	background: var(--mz-danger);
+	border-color: var(--mz-danger);
+	color: var(--mz-bg);
+}
+:root[data-theme="dark"] body:has(> #page-book:not(.hidden)) .btn-danger:hover {
+	background: color-mix(in srgb, var(--mz-danger) 85%, #fff);
+}
+:root[data-theme="dark"]
+	body:has(> #page-book:not(.hidden))
+	.module-workbench-link {
+	border-color: var(--mz-line-2);
+}
+:root[data-theme="dark"] body:has(> #page-book:not(.hidden)) .modal-mask {
+	background: rgba(0, 0, 0, 0.55);
+}
+:root[data-theme="dark"]
+	body:has(> #page-book:not(.hidden))
+	:is(.modal, .toast) {
+	box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+}
+:root[data-theme="dark"]
+	body:has(> #page-book:not(.hidden))
+	:is(.drift-badge.minor, .lock-badge.relock) {
+	color: var(--mz-warn);
+	border-color: var(--mz-warn);
+}
+:root[data-theme="dark"]
+	body:has(> #page-book:not(.hidden))
+	.drift-badge.minor {
+	background: var(--mz-warn-soft);
+}
+:root[data-theme="dark"]
+	body:has(> #page-book:not(.hidden))
+	:is(.relock-banner, .expired-banner, .ctx-bd-note) {
+	color: var(--mz-warn);
+	background: var(--mz-warn-soft);
+	border-color: color-mix(in srgb, var(--mz-warn) 40%, transparent);
+}
+:root[data-theme="dark"] body:has(> #page-book:not(.hidden)) .expired-tool {
+	border-color: color-mix(in srgb, var(--mz-warn) 50%, transparent);
+}
+:root[data-theme="dark"]
+	body:has(> #page-book:not(.hidden))
+	.expired-tool:hover {
+	background: var(--mz-warn-soft);
+}
+:root[data-theme="dark"]
+	body:has(> #page-book:not(.hidden))
+	:is(
+		.tool-call-body pre,
+		.action-preview,
+		.action-args pre,
+		.msg-archived-group summary,
+		.msg-archive .msg-bubble
+	) {
+	background: var(--mz-surface-2);
+	border-color: var(--mz-line);
+}
+:root[data-theme="dark"]
+	body:has(> #page-book:not(.hidden))
+	:is(.action-preview .preview-changes, .ctx-meter, .archived-body) {
+	border-color: var(--mz-line);
+}
+:root[data-theme="dark"] body:has(> #page-book:not(.hidden)) .ctx-bar {
+	background: var(--mz-line);
+}
+:root[data-theme="dark"]
+	body:has(> #page-book:not(.hidden))
+	.action-preview
+	.preview-warn {
+	color: var(--mz-danger);
+}
+:root[data-theme="dark"]
+	body:has(> #page-book:not(.hidden))
+	.ctx-fill.ctx-warn {
+	background: var(--mz-danger);
+}
+:root[data-theme="dark"]
+	body:has(> #page-book:not(.hidden))
+	.msg-action.status-approved
+	.action-status {
+	color: var(--mz-success);
+}
+:root[data-theme="dark"]
+	body:has(> #page-book:not(.hidden))
+	.msg-action:is(.status-expired, .status-superseded)
+	.action-status {
+	color: var(--mz-warn);
+}
+
+@media (max-width: 1100px) {
+	#page-book .ws-chip-conv {
+		display: none;
+	}
+}
+
+/* ---------- 窄屏（阶段 3d）：断点须与 lib/narrow-layout.js 一致 ----------
+   ≤1180px：左栏改成从左侧滑出的抽屉，编辑区与写作助手两栏；
+   ≤760px：写作助手也改成从右侧滑出的抽屉，编辑区独占。
+   抽屉开合由 #book-workbench 上的 nav-drawer-open / chat-drawer-open 控制，
+   按书记住的收起偏好在这里不起作用。专注模式自有布局，抽屉规则一律避开。 */
+#page-book .workbench > .narrow-backdrop {
+	display: none;
+}
+@media (max-width: 1180px) {
+	#page-book .workbench {
+		position: relative;
+		grid-template-columns: minmax(0, 1fr) 5px minmax(300px, 42%);
+	}
+	#page-book .workbench.chat-collapsed {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	#page-book .workbench > .col-divider[data-side="left"] {
+		display: none;
+	}
+	body:not(.focus-mode) #page-book .workbench > .panel-left {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		left: 0;
+		z-index: 40;
+		display: flex;
+		width: min(300px, 86vw);
+		box-shadow: var(--mz-shadow-pop);
+		transform: translateX(-102%);
+		visibility: hidden;
+		transition:
+			transform 0.18s ease,
+			visibility 0.18s;
+	}
+	body:not(.focus-mode) #page-book .workbench.nav-drawer-open > .panel-left {
+		transform: none;
+		visibility: visible;
+	}
+	body:not(.focus-mode)
+		#page-book
+		.workbench:is(.nav-drawer-open, .chat-drawer-open)
+		> .narrow-backdrop {
+		position: absolute;
+		inset: 0;
+		z-index: 35;
+		display: block;
+		background: rgba(15, 18, 21, 0.32);
+	}
+}
+@media (max-width: 760px) {
+	#page-book > .book-rail {
+		flex-basis: 52px;
+		width: 52px;
+	}
+	#page-book .workbench,
+	#page-book .workbench.chat-collapsed {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	#page-book .workbench > .col-divider {
+		display: none;
+	}
+	body:not(.focus-mode) #page-book .workbench > .panel-chat {
+		position: absolute;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		z-index: 40;
+		display: flex;
+		width: min(420px, 100%);
+		box-shadow: var(--mz-shadow-pop);
+		transform: translateX(102%);
+		visibility: hidden;
+		transition:
+			transform 0.18s ease,
+			visibility 0.18s;
+	}
+	body:not(.focus-mode) #page-book .workbench.chat-drawer-open > .panel-chat {
+		transform: none;
+		visibility: visible;
+	}
+	/* 顶栏只留章名、保存状态与按钮：书架与书名已在导航栏和抽屉里 */
+	#page-book .book-topbar {
+		padding: 0 6px 0 10px;
+	}
+	#page-book .book-topbar > .book-crumb-link,
+	#page-book .book-topbar > .book-crumb-sep,
+	#page-book .ws-chip-book {
+		display: none;
+	}
+	#page-book .ws-chip-chapter::before {
+		content: none;
+	}
+	#page-book .book-topbar .topbar-actions {
+		margin-left: 4px;
+	}
+	#page-book .book-topbar .topbar-actions .btn {
+		padding: 0 8px;
+	}
+	/* 协作/商讨模式按钮只留状态圆点，文字靠 title 与读屏 */
+	#page-book #btn-mode {
+		gap: 0;
+		font-size: 0;
+	}
+	#page-book .editor-toolbar {
+		flex-wrap: wrap;
+	}
+}

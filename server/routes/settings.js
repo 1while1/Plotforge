@@ -113,6 +113,8 @@ router.put('/', (req, res) => {
     }
   }
 
+  if (body.context_window !== undefined) require('../modelProfiles').syncContextWindowToActive(body.context_window);
+
   res.json({ settings: getSettings() });
   // 渠道/模型变更后后台静默重拉官方模型信息（去重，失败不影响保存）
   require('../modelInfo').scheduleRefresh();
@@ -144,6 +146,55 @@ router.post('/test-search', async (req, res) => {
     if (rawKey && message.includes(rawKey)) message = message.split(rawKey).join('***');
     res.status(502).json({ ok: false, error: message });
   }
+});
+
+// ---------------- BYOK 服务商配置（model profiles） ----------------
+// 逻辑全在 server/modelProfiles.js；本段只做入参转发与错误 → 400/404 映射。
+// 说明：激活配置会写 base_url/api_key 等四个活动键，故与 PUT / 同样触发官方模型信息重拉。
+const modelProfiles = require('../modelProfiles');
+
+// 业务校验错误（400）与不存在（404）都靠 modelProfiles 的返回值区分，此处仅做状态码映射
+function profileFail(res, result) {
+  if (result && result.error === 'NOT_FOUND') return res.status(404).json({ ok: false, error: '服务商不存在' });
+  return res.status(400).json({ ok: false, error: (result && result.error) || '请求无效' });
+}
+
+router.get('/model-profiles', (req, res) => {
+  res.json(modelProfiles.listPayload());
+});
+
+router.post('/model-profiles', (req, res) => {
+  let profile;
+  try {
+    profile = modelProfiles.createProfile(req.body || {});
+  } catch (err) {
+    return res.status(400).json({ ok: false, error: err.message });
+  }
+  res.json({ profile: modelProfiles.maskProfile(profile), ...modelProfiles.listPayload() });
+});
+
+router.put('/model-profiles/:id', (req, res) => {
+  let profile;
+  try {
+    profile = modelProfiles.updateProfile(req.params.id, req.body || {});
+  } catch (err) {
+    return res.status(400).json({ ok: false, error: err.message });
+  }
+  if (!profile) return res.status(404).json({ ok: false, error: '服务商不存在' });
+  res.json(modelProfiles.listPayload());
+});
+
+router.delete('/model-profiles/:id', (req, res) => {
+  const result = modelProfiles.deleteProfile(req.params.id);
+  if (result.error) return profileFail(res, result);
+  res.json(modelProfiles.listPayload());
+});
+
+router.post('/model-profiles/:id/activate', (req, res) => {
+  const result = modelProfiles.activateProfile(req.params.id, (req.body || {}).model);
+  if (result.error) return profileFail(res, result);
+  require('../modelInfo').scheduleRefresh();
+  res.json({ settings: getSettings(), ...modelProfiles.listPayload() });
 });
 
 // 手动刷新渠道官方模型信息（/models 报告的上下文上限，第一信息源）；

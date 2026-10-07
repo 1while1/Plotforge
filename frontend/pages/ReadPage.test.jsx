@@ -1349,4 +1349,34 @@ describe("ReadPage 组件（路由页范式 P）", () => {
 		);
 		expect(revise.disabled).toBe(false);
 	});
+
+	it("R16 受控输入回填：选中段后侧栏输入框与标题输入框打的字留在框里，后续重渲不被清空", async () => {
+		await mountAndLoad("B1", 101);
+		await act(async () => {
+			document.getElementById("read-mode-edit").click();
+		});
+		const editor = document.getElementById("read-editor");
+		const selectFirst = async () => {
+			await act(async () => {
+				editor.selectionStart = 0;
+				editor.selectionEnd = 4;
+				editor.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+			});
+		};
+		await selectFirst();
+		const input = document.getElementById("read-ai-text");
+		await act(async () => {
+			setInputValue(input, "改得更简洁");
+		});
+		expect(input.value).toBe("改得更简洁");
+		await selectFirst(); // 再触发一次重渲
+		expect(input.value).toBe("改得更简洁");
+
+		const title = document.getElementById("read-chapter-title-input");
+		await act(async () => {
+			setInputValue(title, "新标题");
+		});
+		await selectFirst();
+		expect(title.value).toBe("新标题");
+	});
 });

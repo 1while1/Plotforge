@@ -241,6 +241,7 @@ export function createChatTransport(deps) {
 		currentAbort = runAbort;
 		setBusy(true); // ≙ updateStopBtn（:1220）
 		let finalRetrieval = []; // :1221
+		let finalIntent = null; // done 事件携带的意图标注（operation/prose/discussion/unknown）
 		const toolEvents = [];
 		const actionEvents = [];
 		const blocks = []; // 工具块/确认卡：流结束后迁移到正式消息里（:1222）
@@ -258,6 +259,7 @@ export function createChatTransport(deps) {
 				role: "assistant",
 				reasoning: finalReasoning,
 				retrieval: finalRetrieval,
+				intent: finalIntent,
 				tools: toolEvents.slice(),
 				actions: actionEvents.slice(),
 				blocks: blocks.slice(),
@@ -421,6 +423,7 @@ export function createChatTransport(deps) {
 					// biome-ignore lint/complexity/useOptionalChain: 逐字移植 legacy :1350 if (ev && ev.usage) refreshCtxMeter(ev.usage)
 					if (ev && ev.usage && typeof sink.meter === "function")
 						sink.meter(ev.usage); // ≙ refreshCtxMeter(usage)（:1350）
+					finalIntent = ev && typeof ev.intent === "string" ? ev.intent : null;
 				},
 				onEvent: (ev) => {
 					if (ev && ev.type === "phase") {

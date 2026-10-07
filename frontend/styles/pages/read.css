@@ -1,0 +1,393 @@
+/* 阅读 / 精修页（#/book/:id/read）。UI 优化阶段 4 从 public/style.css 原样迁入，随后按样稿 B 换装。 */
+
+/* ================= 阅读 / 精修工作台 ================= */
+/* 与写作页同构：整页定高，左目录/中阅读精修/右 AI 侧边栏各自内部滚动 */
+#page-read {
+	height: 100vh;
+	overflow: hidden;
+}
+.read-main {
+	flex: 1;
+	display: flex;
+	min-height: 0;
+}
+.read-toc {
+	width: 220px;
+	flex-shrink: 0;
+	border-right: 1px solid var(--border);
+	background: var(--surface);
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+}
+.read-toc.collapsed {
+	display: none;
+}
+.read-toc .pane-head {
+	flex-shrink: 0;
+	margin-bottom: 0;
+	padding: 12px 12px 0;
+}
+#read-toc-list {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	padding: 10px 12px;
+	gap: 2px;
+}
+/* 条目禁止被 flex 压扁：空间不足时由列表出滚动条，而不是每行截半 */
+#read-toc-list .read-toc-item,
+#read-toc-list .read-toc-vol {
+	flex-shrink: 0;
+}
+.read-toc-vol {
+	font-family: var(--serif);
+	font-weight: 600;
+	color: var(--ink-soft);
+	margin-top: 10px;
+	font-size: 13px;
+	letter-spacing: 1px;
+}
+.read-toc-item {
+	padding: 4px 10px;
+	border-radius: var(--radius);
+	cursor: pointer;
+	color: var(--ink-soft);
+	font-size: 13px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+.read-toc-item:hover {
+	background: var(--accent-soft);
+}
+.read-toc-item.active {
+	background: var(--accent-soft);
+	color: var(--accent);
+	font-weight: 600;
+}
+.read-center {
+	flex: 1;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+}
+.read-chapter-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 10px 24px;
+	border-bottom: 1px solid var(--border);
+	flex-shrink: 0;
+}
+.read-chapter-title {
+	font-family: var(--serif);
+	font-size: 16px;
+	font-weight: 600;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+/* 标题改名（2026-09-11）：目录行的 ✎ 与阅读页标题点击共用同一交互——悬停可见可改，
+   沿用编辑器标题框的「下划线即输入框」语言，避免多出一个突兀的方块输入控件。 */
+.read-chapter-title[role="button"] {
+	cursor: text;
+	padding: 2px 6px;
+	border-radius: var(--radius);
+	border-bottom: 1px dashed transparent;
+	max-width: 60%;
+}
+.read-chapter-title[role="button"]:hover {
+	border-bottom-color: var(--border-strong);
+	color: var(--accent);
+}
+.read-chapter-title-input {
+	flex: 1;
+	min-width: 0;
+	max-width: 60%;
+	border: none;
+	border-bottom: 1px solid var(--accent);
+	background: none;
+	font-family: var(--serif);
+	font-size: 16px;
+	font-weight: 600;
+	color: var(--ink);
+	text-align: center;
+	outline: none;
+}
+.read-article-wrap {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	padding: 36px 24px 60px;
+}
+.read-article {
+	max-width: 720px;
+	margin: 0 auto;
+	font-family: var(--mz-read-font);
+	line-height: 2.1;
+	letter-spacing: 0.3px;
+}
+.read-article p {
+	margin-bottom: 1.3em;
+	text-indent: 2em;
+}
+.read-empty {
+	color: var(--muted);
+	text-indent: 0;
+}
+.read-editor {
+	display: block;
+	width: 100%;
+	max-width: 860px;
+	margin: 0 auto;
+	min-height: 100%;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 28px 32px;
+	font-family: var(--mz-read-font);
+	line-height: 2.1;
+	resize: none;
+	outline: none;
+}
+.read-editor:focus {
+	border-color: var(--accent);
+}
+.read-foot {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 10px 24px;
+	border-top: 1px solid var(--border);
+	flex-shrink: 0;
+}
+.read-foot .word-count {
+	margin-left: auto;
+	color: var(--muted);
+	font-size: 12px;
+}
+.read-ai {
+	width: 340px;
+	flex-shrink: 0;
+	border-left: 1px solid var(--border);
+	background: var(--surface);
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+}
+.read-ai.collapsed {
+	display: none;
+}
+/* 上下文组成明细面板（写作聊天侧边栏「明细」按钮） */
+.ctx-bd-bar {
+	display: flex;
+	height: 14px;
+	border-radius: 4px;
+	overflow: hidden;
+	background: var(--mz-hover);
+	margin: 4px 0 10px;
+}
+.ctx-bd-seg {
+	height: 100%;
+}
+.ctx-bd-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 3px 2px;
+	font-size: 12px;
+}
+.ctx-bd-dot {
+	width: 10px;
+	height: 10px;
+	border-radius: 2px;
+	flex-shrink: 0;
+}
+.ctx-bd-name {
+	flex: 1;
+}
+.ctx-bd-val {
+	color: var(--ink-soft);
+	font-variant-numeric: tabular-nums;
+}
+.ctx-bd-sub {
+	padding-left: 16px;
+}
+.ctx-bd-subtitle {
+	margin: 10px 0 2px;
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--ink-soft);
+}
+.ctx-bd-note {
+	margin: 0 0 8px;
+	padding: 6px 8px;
+	font-size: 12px;
+	color: var(--mz-warn);
+	background: var(--mz-warn-soft);
+	border-left: 3px solid var(--mz-warn);
+	border-radius: 4px;
+}
+/* 最近调用台账表（明细面板） */
+.ctx-bd-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 12px;
+	margin: 2px 0 8px;
+}
+.ctx-bd-table th,
+.ctx-bd-table td {
+	padding: 3px 6px;
+	border-bottom: 1px solid var(--mz-line);
+	text-align: left;
+	white-space: nowrap;
+}
+.ctx-bd-table th {
+	color: var(--ink-soft);
+	font-weight: 600;
+}
+.ctx-bd-table td {
+	font-variant-numeric: tabular-nums;
+}
+
+/* 选中段引用块：侧边栏"接住"选区，用户对着它下命令 */
+.read-ai-quote {
+	display: flex;
+	align-items: flex-start;
+	gap: 6px;
+	margin: 8px 10px 0;
+	padding: 6px 8px;
+	background: var(--accent-soft);
+	border-left: 3px solid var(--accent);
+	border-radius: 4px;
+	font-size: 12px;
+	color: var(--ink-soft);
+	flex-shrink: 0;
+}
+.read-ai-quote-text {
+	flex: 1;
+	display: -webkit-box;
+	-webkit-line-clamp: 3;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+	white-space: pre-wrap;
+	line-height: 1.5;
+}
+.read-mode-switch {
+	display: inline-flex;
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius);
+	overflow: hidden;
+}
+.read-mode-switch .btn {
+	border: none;
+	border-radius: 0;
+	background: var(--surface);
+}
+.read-mode-switch .mode-on {
+	background: var(--accent);
+	color: var(--mz-accent-fg);
+}
+.read-select {
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius);
+	background-color: var(--surface);
+	color: var(--ink);
+	padding: 4px 24px 4px 6px;
+	font-size: 12px;
+}
+/* 阅读主题：作用于中间内容区（含精修编辑区） */
+.theme-light {
+	background: var(--surface);
+	color: var(--ink);
+}
+.theme-light .read-editor {
+	background: var(--surface);
+	color: var(--ink);
+}
+.theme-sepia {
+	background: #f3ead8;
+	color: #4a4036;
+}
+.theme-sepia .read-editor {
+	background: #f8f1e3;
+	color: #4a4036;
+	border-color: #e0d5bd;
+}
+.theme-night {
+	background: #23262b;
+	color: #c9cdd4;
+}
+.theme-night .read-editor {
+	background: #2b2f36;
+	color: #c9cdd4;
+	border-color: #3a3f47;
+}
+.theme-night .read-chapter-head,
+.theme-night .read-foot {
+	border-color: #3a3f47;
+}
+/* 窄窗口退路：侧栏收窄，保证中间阅读/精修列始终可读 */
+@media (max-width: 1100px) {
+	.read-toc {
+		width: 160px;
+	}
+	.read-ai {
+		width: 260px;
+	}
+}
+/* 手机/窄平板：两侧栏改为浮在正文上的抽屉，正文始终占满整宽（并排时 240px 侧栏会把正文挤成逐字竖列）。
+   开关仍是顶栏「目录」「AI」按钮（.collapsed）；ReadPage 在窄屏首次进入时默认两栏收起，断点须与其 NARROW_READ 一致。 */
+@media (max-width: 860px) {
+	/* 顶栏按钮放不下：操作区横向滑动，两个抽屉开关排最前（否则被裁在视口外点不到） */
+	.read-topbar {
+		padding: 0 10px;
+		gap: 8px;
+	}
+	/* 回写作页由左侧全局导航轨「写作」承担，窄屏把位置让给操作区 */
+	#read-return {
+		display: none;
+	}
+	.read-topbar .book-title {
+		max-width: 28vw;
+	}
+	.read-topbar .topbar-actions {
+		flex: 1;
+		min-width: 0;
+		overflow-x: auto;
+		scrollbar-width: none;
+	}
+	.read-topbar .topbar-actions > * {
+		flex-shrink: 0;
+	}
+	#read-toggle-toc,
+	#read-toggle-ai {
+		order: -1;
+	}
+	.read-main {
+		position: relative;
+	}
+	.read-toc:not(.collapsed),
+	.read-ai:not(.collapsed) {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		z-index: 30;
+		box-shadow: var(--mz-shadow-pop);
+	}
+	.read-toc:not(.collapsed) {
+		left: 0;
+		width: min(260px, 85%);
+	}
+	.read-ai:not(.collapsed) {
+		right: 0;
+		width: min(340px, 100%);
+	}
+}
+
+#read-toc-list .read-toc-vol.read-toc-orphan {
+	color: var(--warn);
+	font-style: italic;
+}

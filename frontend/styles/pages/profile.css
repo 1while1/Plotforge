@@ -1,0 +1,186 @@
+/* 个人中心（#/profile）。UI 优化阶段 4 从 public/style.css 原样迁入，随后按样稿 B 换装。 */
+
+/* ============ 个人中心（#/profile） ============ */
+/* 文人风总览页：白文印章 + 衬线题字 + 笺纸三卡；数据走既有接口，行点击下钻各书页面 */
+.profile-main {
+	max-width: 1080px;
+	margin: 0 auto;
+	padding: 24px 20px 48px;
+}
+.profile-hero {
+	display: flex;
+	align-items: center;
+	gap: 18px;
+	padding: 20px 22px;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	box-shadow: var(--shadow);
+}
+/* 白文印章：朱砂方印，字反白；色与 --danger 同族略亮，专用此印 */
+.profile-seal {
+	flex-shrink: 0;
+	width: 58px;
+	height: 58px;
+	border-radius: 8px;
+	background: #9e3f33;
+	color: #f7f0e6;
+	font-family: var(--serif);
+	font-size: 19px;
+	font-weight: 700;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	writing-mode: vertical-rl;
+	letter-spacing: 4px;
+	box-shadow:
+		inset 0 0 0 2px rgba(247, 240, 230, 0.35),
+		var(--shadow);
+}
+.profile-hero-title {
+	font-family: var(--serif);
+	font-size: 19px;
+	font-weight: 600;
+}
+.profile-hero-sub {
+	margin-top: 5px;
+	font-size: 12px;
+	color: var(--muted);
+	letter-spacing: 1px;
+}
+.profile-stats {
+	margin-left: auto;
+	display: flex;
+	gap: 26px;
+}
+.profile-stat {
+	text-align: right;
+}
+.profile-stat b {
+	display: block;
+	font-family: var(--serif);
+	font-size: 21px;
+	font-weight: 600;
+	color: var(--ink);
+}
+.profile-stat span {
+	font-size: 12px;
+	color: var(--muted);
+}
+
+.profile-cards {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 16px;
+	margin-top: 16px;
+}
+.profile-card {
+	display: flex;
+	flex-direction: column;
+	padding: 16px;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	box-shadow: var(--shadow);
+}
+.profile-card-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+/* 单字徽记：黛蓝描边小印，与印章主印呼应 */
+.profile-card-mark {
+	flex-shrink: 0;
+	width: 26px;
+	height: 26px;
+	border: 1.5px solid var(--accent);
+	border-radius: 6px;
+	color: var(--accent);
+	font-family: var(--serif);
+	font-size: 14px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+.profile-card-head h3 {
+	font-family: var(--serif);
+	font-size: 16px;
+	font-weight: 600;
+}
+.profile-card-sum {
+	margin-left: auto;
+	font-size: 12px;
+	color: var(--muted);
+}
+.profile-card-desc {
+	margin: 9px 0 12px;
+	font-size: 12px;
+	line-height: 1.7;
+	color: var(--muted);
+}
+.profile-book-rows {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	max-height: 320px;
+	overflow-y: auto;
+}
+.profile-book-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 7px 9px;
+	font: inherit;
+	font-size: 13px;
+	text-align: left;
+	color: var(--ink);
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: var(--radius);
+	cursor: pointer;
+	transition:
+		background 0.12s ease,
+		border-color 0.12s ease;
+}
+.profile-book-row:hover {
+	background: var(--accent-soft);
+	border-color: var(--border);
+}
+.profile-book-row .pbr-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-weight: 500;
+}
+.profile-book-row .pbr-meta {
+	margin-left: auto;
+	flex-shrink: 0;
+	max-width: 55%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 12px;
+	color: var(--muted);
+}
+.profile-book-row .pbr-chip {
+	margin-left: auto;
+	flex-shrink: 0;
+	font-size: 11px;
+	padding: 1px 8px;
+	border-radius: 999px;
+}
+.pbr-chip.on {
+	color: var(--accent);
+	background: var(--accent-soft);
+}
+.pbr-chip.off {
+	color: var(--muted);
+	border: 1px solid var(--border);
+}
+.profile-empty {
+	padding: 8px 9px;
+	font-size: 12px;
+	color: var(--muted);
+}

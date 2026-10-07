@@ -1,5 +1,5 @@
 // S5-8（Plan §1.1 G5）：Agent 台「范围条」props 驱动叶组件（≙ legacy :138-201／:531-547）。
-// DOM 契约唯一事实源＝frontend/index.html:600-615（id/class/文案/title 逐字）；public/style.css:1372-1464
+// DOM 契约唯一事实源＝frontend/index.html:600-615（id/class/文案/title 逐字）；frontend/styles/pages/agent.css
 // 的既有选择器按同结构生效。props 契约＝本片冻结件（Plan §5）；S5-9 只填实现/传参，不改语义。
 // 纪律：零 fetch、零全局写入、零 localStorage——一切经 props 注入。
 // S5-9（切换笔）非冒泡 change 承接：legacy :2055／:2060／:2062 是 select.onchange 直挂元素，

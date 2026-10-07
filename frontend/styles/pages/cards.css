@@ -1,0 +1,223 @@
+/* 作家卡页（#/book/:id/cards）。UI 优化阶段 4 从 public/style.css 原样迁入，随后按样稿 B 换装。 */
+
+/* ================= 作家卡页 ================= */
+.cards-binding {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	margin-top: 8px;
+}
+.binding-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+}
+.binding-role {
+	flex: 0 0 42px;
+	padding-top: 5px;
+	font-size: 12px;
+	color: var(--muted);
+}
+.binding-row select {
+	flex: 1;
+	padding: 6px 26px 6px 8px;
+	font-size: 13px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background-color: var(--paper);
+	color: var(--ink);
+}
+.binding-aux {
+	flex: 1;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+.binding-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+	padding: 4px 10px;
+	font-size: 13px;
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	cursor: pointer;
+	user-select: none;
+}
+.binding-chip.on {
+	border-color: var(--accent);
+	background: var(--bg-soft);
+	font-weight: 600;
+}
+.binding-chip input {
+	margin: 0;
+}
+
+.cards-list {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	max-height: 52vh;
+	overflow-y: auto;
+}
+.card-item {
+	padding: 11px 13px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	cursor: pointer;
+	transition: border-color 0.15s;
+}
+.card-item:hover {
+	border-color: var(--accent);
+}
+.card-item.in-chain {
+	border-left: 3px solid var(--accent);
+}
+.card-item.disabled {
+	opacity: 0.55;
+}
+.card-item-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 5px;
+}
+.card-name {
+	font-size: 14px;
+	font-weight: 600;
+}
+.card-tag {
+	padding: 1px 6px;
+	font-size: 11px;
+	border-radius: 4px;
+	background: var(--bg-soft);
+	color: var(--muted);
+}
+.card-tag.on {
+	background: color-mix(in srgb, var(--mz-success) 12%, transparent);
+	color: var(--mz-success);
+}
+.card-tag.off {
+	background: var(--mz-surface-2);
+	color: var(--mz-text-3);
+}
+.card-item-meta {
+	font-size: 12px;
+	color: var(--muted);
+}
+.card-item-note {
+	font-size: 12px;
+	color: var(--muted);
+	margin-top: 3px;
+}
+
+.cards-preview {
+	max-height: 46vh;
+	overflow: auto;
+	padding: 12px;
+	font-family: var(--sans);
+	font-size: 12px;
+	line-height: 1.75;
+	white-space: pre-wrap;
+	word-break: break-word;
+	background: var(--bg-soft);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+}
+
+/* 卡编辑器（宽模态，内部元素比通用模态密） */
+.modal.modal-wide {
+	width: 760px;
+	max-height: 86vh;
+	display: flex;
+	flex-direction: column;
+}
+.modal-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 12px;
+}
+.modal-head h3 {
+	margin: 0;
+}
+.modal-body {
+	flex: 1;
+	overflow-y: auto;
+	padding-right: 4px;
+}
+.modal-foot {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding-top: 14px;
+	margin-top: 14px;
+	border-top: 1px solid var(--border);
+}
+.card-sub {
+	margin: 20px 0 8px;
+	font-size: 13px;
+	font-weight: 600;
+}
+.card-sub small {
+	font-weight: 400;
+	color: var(--muted);
+}
+.card-rules,
+.card-samples {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+.rule-row {
+	padding: 10px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: var(--bg-soft);
+}
+.rule-row input,
+.rule-row textarea,
+.rule-row select {
+	width: 100%;
+	padding: 6px 8px;
+	margin-bottom: 5px;
+	font-family: inherit;
+	font-size: 12.5px;
+	color: var(--ink);
+	background-color: var(--paper);
+	border: 1px solid var(--border);
+	border-radius: 5px;
+}
+.rule-row select {
+	padding-right: 26px;
+} /* 给全局下拉箭头让位 */
+.rule-row-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+}
+.rule-row-head .rule-cat {
+	flex: 0 0 76px;
+}
+.rule-row-head .rule-title {
+	flex: 1;
+}
+.rule-row-head .rule-sev {
+	flex: 0 0 130px;
+}
+.rule-row-head .btn {
+	flex: 0 0 auto;
+	white-space: nowrap;
+}
+.rule-src {
+	font-size: 11px;
+	color: var(--muted);
+}
+.rule-examples {
+	display: flex;
+	gap: 6px;
+}
+.rule-src-input {
+	font-size: 11.5px;
+	color: var(--muted);
+}

@@ -4,7 +4,7 @@ const path = require('node:path');
 
 const base = new URL(process.argv[2] || 'http://127.0.0.1:3119');
 if (!['127.0.0.1', 'localhost'].includes(base.hostname) || ['3000', '3100', ''].includes(base.port)) throw new Error('仅允许独立端口的本机隔离实例');
-const output = path.resolve(process.argv[3] || 'C:/tmp/novel-live-results');
+const output = path.resolve(process.argv[3] || path.join(require('node:os').tmpdir(), 'plotforge-live-results'));
 const repeats = Math.max(1, Math.min(3, Number(process.argv[4]) || 3));
 const only = process.argv[5] || '';
 const resumeHistoryMode = process.argv[6] || 'full';

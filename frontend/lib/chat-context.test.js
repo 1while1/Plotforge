@@ -85,7 +85,7 @@ describe("T3 chat-context（legacy :665-827）", () => {
 			'<div class="ctx-bd-seg" style="width:10%;background:#5b8dd9" title="系统提示词 ≈100（10%）"></div>',
 		);
 		expect(bodyHTML).toContain(
-			'<div class="ctx-bd-seg" style="width:52%;background:#d9d9d9" title="剩余自由 ≈520（52%）"></div>',
+			'<div class="ctx-bd-seg" style="width:52%;background:var(--border-strong)" title="剩余自由 ≈520（52%）"></div>',
 		);
 		expect(bodyHTML).toContain(
 			'<div class="ctx-bd-row"><span class="ctx-bd-dot" style="background:#5b8dd9"></span><span class="ctx-bd-name">系统提示词</span><span class="ctx-bd-val">≈100 · 10%</span></div>',
@@ -137,6 +137,38 @@ describe("T3 chat-context（legacy :665-827）", () => {
 		);
 		expect(full.bodyHTML).toContain(
 			'<span class="ctx-bd-name">剩余自由</span><span class="ctx-bd-val">≈0 · 0%</span>',
+		);
+	});
+
+	it("系统提示分项显示额外注入并与总数相加", () => {
+		const { bodyHTML } = breakdownHTML(
+			breakdown({
+				system: {
+					total: 150,
+					budget: 500,
+					parts: [{ name: "基础规则", tokens: 100 }],
+					additionalTokens: 50,
+				},
+			}),
+		);
+		expect(bodyHTML).toContain("系统提示逐层明细（当前组装估算，合计 ≈150");
+		expect(bodyHTML).toContain(
+			'工具历史、指南等额外注入</span><span class="ctx-bd-val">≈50',
+		);
+		const recorded = breakdownHTML(
+			breakdown({
+				lastBreakdown: {
+					system: 150,
+					history: 0,
+					tool: 0,
+					schema: 0,
+					outputReserve: 100,
+					parts: [{ name: "基础规则", tokens: 100 }],
+				},
+			}),
+		);
+		expect(recorded.bodyHTML).toContain(
+			'工具历史、指南等额外注入</span><span class="ctx-bd-val">≈50',
 		);
 	});
 

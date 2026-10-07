@@ -14,8 +14,9 @@
 // 零 fetch、零 window.* 写入、零 localStorage；SSE 事件由 transport 经 apiRef 推入。
 import { useEffect, useRef, useState } from "react";
 import { makeSourceTag } from "../lib/chat-render.js";
+import { followTick } from "../lib/scroll-follow.js";
 import { ChatActionCard } from "./ChatActionCard.jsx";
-import { ChatToolEventBlock } from "./ChatToolEventBlock.jsx";
+import { ChatStepItem } from "./ChatStepItem.jsx";
 
 export const FLUSH_INTERVAL_MS = 120; // :1198
 export const SCROLL_THROTTLE_MS = 200; // :1199
@@ -79,8 +80,7 @@ export function ChatLiveBubble({
 			const now = Date.now();
 			if (now - lastScrollAtRef.current < SCROLL_THROTTLE_MS) return;
 			lastScrollAtRef.current = now;
-			const el = scrollRef.current;
-			if (el) el.scrollTop = el.scrollHeight;
+			followTick(scrollRef.current);
 		};
 		const flushLive = () => {
 			// :1207-1212
@@ -239,7 +239,7 @@ export function ChatLiveBubble({
 			<LiveRetrieval hits={retrieval} />
 			{blocks.map((b) =>
 				b.kind === "tool" ? (
-					<ChatToolEventBlock key={b.key} event={b.payload} />
+					<ChatStepItem key={b.key} event={b.payload} />
 				) : (
 					<ChatActionCard
 						key={b.key}

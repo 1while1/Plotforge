@@ -254,6 +254,8 @@ test('新确认卡与会话绑定：confirm 错会话 403；resume 从服务端�
   // 会话内先有一轮历史（服务端历史组装的数据来源）
   svc.appendMessage({ conversationId: conv.id, role: 'user', content: '帮我建角色', source: 'agent' });
   svc.appendMessage({ conversationId: conv.id, role: 'assistant', content: '已提交确认卡', source: 'agent' });
+  db.run('INSERT INTO conversation_summaries (conversation_id, content, covered_message_ids) VALUES (?, ?, ?)',
+    [conv.id, 'AGENT_RESUME_SUMMARY_BLUE_731', '[]']);
 
   // 模拟会话运行中创建的确认卡：run 行绑定会话，action 快照 run_id
   const iso = new Date().toISOString();
@@ -286,6 +288,7 @@ test('新确认卡与会话绑定：confirm 错会话 403；resume 从服务端�
 
   const requestText = JSON.stringify(stub.calls[stub.calls.length - 1].body);
   assert.ok(requestText.includes('帮我建角色'), '续跑必须从服务端会话历史组装');
+  assert.ok(requestText.includes('AGENT_RESUME_SUMMARY_BLUE_731'), '续跑必须保留服务端压缩摘要');
   assert.ok(requestText.includes('系统事件'), '确认结果以系统事件注入');
   const sysRow = db.get("SELECT * FROM messages WHERE conversation_id = ? AND source = 'system'", [conv.id]);
   assert.ok(sysRow, '系统事件必须落服务端会话（刷新可见）');

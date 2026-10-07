@@ -784,6 +784,31 @@ describe("T1 chat-transport（legacy 块二 :1048-1411 逐条保真）", () => {
 		await t2.transport.sendText("B");
 		expect(t2.calls.meter.length).toBe(0);
 	});
+	it("T1-15b intent→正式消息：done 带 intent 落盘、缺省为 null（:1350/:1232）", async () => {
+		const t = setup({
+			fetchImpl: () =>
+				Promise.resolve(
+					sseResponse([ev({ type: "done", content: "文", intent: "prose" })]),
+				),
+		});
+		await t.transport.sendText("A");
+		expect(t.calls.commit[1].intent).toBe("prose");
+		const t2 = setup({
+			fetchImpl: () =>
+				Promise.resolve(sseResponse([ev({ type: "done", content: "文" })])),
+		});
+		await t2.transport.sendText("B");
+		expect(t2.calls.commit[1].intent).toBe(null);
+		// 非字符串 intent（服务端脏数据）同样回落 null
+		const t3 = setup({
+			fetchImpl: () =>
+				Promise.resolve(
+					sseResponse([ev({ type: "done", content: "文", intent: 7 })]),
+				),
+		});
+		await t3.transport.sendText("C");
+		expect(t3.calls.commit[1].intent).toBe(null);
+	});
 
 	it("T1-16 收尾映射：run 三值文案表／errors 只提示不落半截／refreshRunStatus 参数／syncWatcher／autoCompact（:1363-1381）", async () => {
 		const table = [
@@ -808,6 +833,7 @@ describe("T1 chat-transport（legacy 块二 :1048-1411 逐条保真）", () => {
 				content: `正文\n\n（${label}）`,
 				reasoning: "",
 				retrieval: [],
+				intent: null,
 				tools: [],
 				actions: [],
 				blocks: [],
@@ -915,6 +941,7 @@ describe("T1 chat-transport（legacy 块二 :1048-1411 逐条保真）", () => {
 			content: "前半段\n\n（已停止生成）",
 			reasoning: "",
 			retrieval: [],
+			intent: null,
 			tools: [],
 			actions: [],
 			blocks: [],

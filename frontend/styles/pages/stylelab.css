@@ -1,0 +1,260 @@
+/* 错题库页（#/book/:id/stylelab）：改写曲线与标本列表。UI 优化阶段 4 从 public/style.css 原样迁入，随后按样稿 B 换装。 */
+
+/* 改写工作台（错题库页 · 人改比例 → 检测分，2026-09-14） */
+.curve-bar {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex-wrap: wrap;
+	margin: 10px 0 6px;
+}
+.curve-bar select {
+	font-size: 13px;
+	padding: 4px 26px 4px 8px;
+	max-width: 320px;
+}
+.curve-auto {
+	font-size: 12px;
+	color: var(--muted);
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+.curve-body {
+	display: flex;
+	gap: 14px;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	margin-top: 10px;
+}
+.curve-chart-wrap {
+	flex: 0 0 360px;
+	max-width: 100%;
+}
+#curve-chart {
+	width: 100%;
+	height: auto;
+	background: var(--bg-soft);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+}
+#curve-chart .chart-grid {
+	stroke: var(--border);
+	stroke-width: 1;
+	stroke-dasharray: 3 3;
+}
+#curve-chart .chart-axis {
+	font-size: 9px;
+	fill: var(--muted);
+}
+#curve-chart .chart-line {
+	fill: none;
+	stroke: var(--mz-danger);
+	stroke-width: 1.6;
+}
+#curve-chart .chart-dot {
+	fill: var(--mz-danger);
+}
+#curve-chart .chart-human {
+	stroke: var(--mz-success);
+	stroke-width: 1;
+	stroke-dasharray: 5 3;
+}
+#curve-chart .chart-human-label {
+	fill: var(--mz-success);
+}
+.curve-points {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin-top: 8px;
+	max-height: 22vh;
+	overflow-y: auto;
+}
+.curve-point {
+	display: flex;
+	gap: 8px;
+	align-items: baseline;
+	font-size: 12px;
+	color: var(--muted);
+}
+.curve-point-idx {
+	color: var(--muted);
+}
+.curve-point-conf {
+	font-family: monospace;
+	color: var(--text);
+}
+.curve-point-band {
+	margin-left: auto;
+}
+.curve-point-n {
+	color: var(--mz-warn);
+}
+.curve-paras {
+	flex: 1 1 420px;
+	min-width: 280px;
+}
+.curve-paras-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	justify-content: space-between;
+	font-size: 12px;
+	color: var(--muted);
+	margin-bottom: 8px;
+	flex-wrap: wrap;
+}
+.curve-paras {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	max-height: 60vh;
+	overflow-y: auto;
+}
+.curve-para {
+	padding: 6px 8px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+}
+.curve-para.changed {
+	border-color: var(--mz-success);
+	background: color-mix(in srgb, var(--mz-success) 8%, transparent);
+}
+.curve-para-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-size: 11px;
+	color: var(--muted);
+	flex-wrap: wrap;
+	margin-bottom: 4px;
+}
+.curve-para-idx {
+	font-weight: 600;
+	color: var(--text);
+}
+.curve-para-state {
+	color: var(--mz-success);
+}
+.curve-para-tags {
+	display: flex;
+	gap: 4px;
+	flex-wrap: wrap;
+}
+.curve-tag {
+	padding: 0 5px;
+	border-radius: 3px;
+	background: var(--mz-warn-soft);
+	color: var(--mz-warn);
+	font-size: 11px;
+}
+.curve-para-text {
+	width: 100%;
+	font-size: 13px;
+	line-height: 1.7;
+	font-family: inherit;
+	padding: 6px;
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	background: var(--paper);
+	color: var(--ink);
+	resize: vertical;
+	box-sizing: border-box;
+}
+.curve-copy-fallback {
+	width: 100%;
+	font-size: 12px;
+	font-family: monospace;
+}
+
+.sample-list {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	max-height: 56vh;
+	overflow-y: auto;
+}
+.sample-item {
+	padding: 10px 12px;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+}
+.sample-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-bottom: 6px;
+	font-size: 12px;
+}
+.sample-verdict {
+	padding: 1px 6px;
+	border-radius: 4px;
+	background: var(--bg-soft);
+	color: var(--muted);
+}
+.sample-verdict.verdict-ai {
+	background: color-mix(in srgb, var(--mz-danger) 10%, transparent);
+	color: var(--mz-danger);
+}
+.sample-verdict.verdict-human {
+	background: color-mix(in srgb, var(--mz-success) 12%, transparent);
+	color: var(--mz-success);
+}
+.sample-verdict.verdict-rejected {
+	background: var(--mz-surface-2);
+	color: var(--mz-text-3);
+	text-decoration: line-through;
+}
+.sample-seen {
+	padding: 1px 6px;
+	border-radius: 4px;
+	background: var(--mz-warn-soft);
+	color: var(--mz-warn);
+}
+.sample-src {
+	margin-left: auto;
+	color: var(--muted);
+}
+.sample-text {
+	font-size: 13px;
+	line-height: 1.7;
+	margin-bottom: 8px;
+}
+.sample-ops {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+
+/* 错题库页 */
+.style-lab-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+	margin-bottom: 12px;
+}
+.style-lab-stats {
+	display: flex;
+	gap: 14px;
+	flex-wrap: wrap;
+	font-size: 12px;
+	color: var(--muted);
+}
+.style-lab-stats b {
+	color: var(--text);
+	font-variant-numeric: tabular-nums;
+}
+.style-lab-filters {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+	margin-bottom: 12px;
+	align-items: center;
+}
+.style-lab-filters select,
+.style-lab-filters input {
+	font-size: 13px;
+	padding: 4px 8px;
+}

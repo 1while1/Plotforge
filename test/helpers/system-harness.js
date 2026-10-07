@@ -1608,6 +1608,12 @@ function pickPort(startPort = 3166, tries = 12) {
 // 子进程命令行核对（win32：PowerShell CIM 读 CommandLine）——杀之前必须确认目标
 function processCommandLine(pid) {
   try {
+    if (process.platform === 'linux') {
+      return fs.readFileSync(`/proc/${Number(pid)}/cmdline`, 'utf8').split(String.fromCharCode(0)).join(' ').trim();
+    }
+    if (process.platform !== 'win32') {
+      return execFileSync('ps', ['-p', String(Number(pid)), '-o', 'args='], { encoding: 'utf8', timeout: 15000 }).trim();
+    }
     const out = execFileSync('powershell', [
       '-NoProfile', '-Command',
       `(Get-CimInstance Win32_Process -Filter "ProcessId=${Number(pid)}").CommandLine`,

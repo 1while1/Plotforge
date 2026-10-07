@@ -30,10 +30,16 @@ jobs:
         with:
           node-version: '24'
           cache: npm
-      - name: Use isolated database
-        run: echo "NOVEL_DB_FILE=$RUNNER_TEMP/plotforge-ci.db" >> "$GITHUB_ENV"
+      - name: Use isolated database and model cache
+        run: |
+          echo "NOVEL_DB_FILE=$RUNNER_TEMP/plotforge-ci.db" >> "$GITHUB_ENV"
+          echo "NOVEL_EMBED_CACHE_DIR=$RUNNER_TEMP/plotforge-model-cache" >> "$GITHUB_ENV"
       - name: Install locked dependencies
         run: npm ci --no-audit --no-fund
+      - name: Audit all dependencies
+        run: npm audit --registry=https://registry.npmjs.org
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --registry=https://registry.npmjs.org
       - name: Check frontend
         run: npx biome check frontend
       - name: Build frontend
@@ -42,3 +48,13 @@ jobs:
         run: npm test
       - name: Test frontend
         run: npm run test:fe -- --no-file-parallelism
+      - name: Verify native embedding on Linux
+        env:
+          HF_ENDPOINT: https://huggingface.co
+          NOVEL_DB_FILE: ${{ runner.temp }}/plotforge-embedding-online.db
+        run: node tools/verify-embedding-runtime.js --output "$RUNNER_TEMP/embedding-online.json"
+      - name: Verify embedding from offline cache
+        env:
+          HF_ENDPOINT: https://huggingface.co
+          NOVEL_DB_FILE: ${{ runner.temp }}/plotforge-embedding-offline.db
+        run: node tools/verify-embedding-runtime.js --offline --output "$RUNNER_TEMP/embedding-offline.json"

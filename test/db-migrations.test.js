@@ -29,6 +29,7 @@ test('character_hub_v1 migrates legacy data, seeds definitions, and creates one 
       { version: 'chat_actions_persistence_v1' },
       { version: 'conversations_v1' },
       { version: 'corpus_tables_v1' },
+      { version: 'embedding_runtime_q8_v1' },
       { version: 'ledger_repair_v1' },
       { version: 'llm_call_conversations_v1' },
       { version: 'llm_call_parts_v1' },
@@ -117,7 +118,7 @@ test('migration is idempotent and seedBook initializes books created later', asy
   db.close();
   await db.init({ filePath: location.filePath });
 
-  assert.equal(db.get('SELECT COUNT(*) AS n FROM schema_versions').n, 31);
+  assert.equal(db.get('SELECT COUNT(*) AS n FROM schema_versions').n, 32);
   assert.equal(
     db.get('SELECT COUNT(*) AS n FROM state_field_definitions WHERE book_id = ?', [location.bookId]).n,
     8

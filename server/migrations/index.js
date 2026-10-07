@@ -32,6 +32,7 @@ const planningHandoffsV1 = require('./029-planning-handoffs');
 const proposalDiscardLedgerV1 = require('./030-proposal-discard-ledger');
 const llmCallConversationsV1 = require('./031-llm-call-conversations');
 const readEvidenceV1 = require('./032-read-evidence');
+const embeddingRuntimeQ8V1 = require('./033-embedding-runtime-q8');
 
 const MIGRATION_FILES = [
   './001-character-hub.js',
@@ -65,6 +66,7 @@ const MIGRATION_FILES = [
   './030-proposal-discard-ledger.js',
   './031-llm-call-conversations.js',
   './032-read-evidence.js',
+  './033-embedding-runtime-q8.js',
 ];
 // 执行序（applyPending 按本数组顺序跑，已应用的跳过）。数组顺序必须与 MIGRATION_FILES
 // 按 version 字母序严格一致：本文件末尾按位置给 MIGRATIONS[i] 配 MIGRATION_FILES[i]
@@ -74,7 +76,7 @@ const MIGRATION_FILES = [
 // 满足，不得前移）；026-agent-runs 只依赖 001 建立的 books，位置无约束；029-planning-
 // handoffs 的 planning_notes/handoffs 引用 028 建立的 conversations，必须在 028 之后；
 // 030-proposal-discard-ledger 是全局台账（有意不挂任何外键），只依赖库已建，位置无约束。
-const MIGRATIONS = [characterHubV1, relockPendingV1, proposalGovernanceV1, ledgerRepairV1, llmObservabilityV1, llmCallPartsV1, llmCallSchemaV1, messagesBookIndexV1, chapterVersionsFkV1, polishHistoryFkV1, chatActionsPersistenceV1, volumeSummaryPropagationV1, backfillJobsPersistenceV1, bookSummaryPropagationV1, messageToolsPersistenceV1, chatActionsLifecycleV1, messageSourceV1, aiStyleSamplesV1, stylePacksV1, styleRulesGeneralV1, writerCardsV1, corpusTablesV1, chapterRevisionV1, chapterRecycleV1, agentRunsV1, actionRecoveryV1, conversationsV1, planningHandoffsV1, proposalDiscardLedgerV1, llmCallConversationsV1, readEvidenceV1];
+const MIGRATIONS = [characterHubV1, relockPendingV1, proposalGovernanceV1, ledgerRepairV1, llmObservabilityV1, llmCallPartsV1, llmCallSchemaV1, messagesBookIndexV1, chapterVersionsFkV1, polishHistoryFkV1, chatActionsPersistenceV1, volumeSummaryPropagationV1, backfillJobsPersistenceV1, bookSummaryPropagationV1, messageToolsPersistenceV1, chatActionsLifecycleV1, messageSourceV1, aiStyleSamplesV1, stylePacksV1, styleRulesGeneralV1, writerCardsV1, corpusTablesV1, chapterRevisionV1, chapterRecycleV1, agentRunsV1, actionRecoveryV1, conversationsV1, planningHandoffsV1, proposalDiscardLedgerV1, llmCallConversationsV1, readEvidenceV1, embeddingRuntimeQ8V1];
 
 // A9（第二轮重审查）：checksum 改为迁移源码文件内容哈希。
 // 此前是手写版本串（与文件内容无关），一旦手串变更 → 存量库 init 直接抛“校验和不一致”

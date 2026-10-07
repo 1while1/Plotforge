@@ -1,0 +1,23 @@
+name: 功能建议
+description: 提出具体的写作场景或改进建议
+title: '[Feature] '
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 希望解决什么问题？
+      description: 描述使用场景与现在遇到的困难。
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: 建议怎样改进？
+      description: 简单说明期望的操作或效果。
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 现有办法或参考（可选）

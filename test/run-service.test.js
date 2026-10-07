@@ -105,8 +105,9 @@ async function consumeSse(res) {
     const { done, value } = await reader.read();
     if (done) break;
     buf += dec.decode(value, { stream: true });
-    let idx;
-    while ((idx = buf.indexOf('\n\n')) >= 0) {
+    for (;;) {
+      const idx = buf.indexOf('\n\n');
+      if (idx < 0) break;
       const frame = buf.slice(0, idx);
       buf = buf.slice(idx + 2);
       const line = frame.split('\n').find(l => l.startsWith('data: '));
@@ -230,7 +231,7 @@ test('P3-2：读取端键过滤兜底——绕过写入端的脏 payload 读出�
   // 直接 INSERT 明文敏感键（绕开 appendRunEvent 的写入端脱敏，模拟脏数据）
   db.run(
     'INSERT INTO agent_run_events (run_id, seq, type, payload_json, created_at) VALUES (?, 1, ?, ?, ?)',
-    [run.id, 'tool_result', JSON.stringify({ nested: { api_key: 'sk-live-should-not-leak', token: 'tok', note: 'ok' } }), new Date().toISOString()]
+    [run.id, 'tool_result', JSON.stringify({ nested: { api_key: 'sk-test-should-not-leak', token: 'tok', note: 'ok' } }), new Date().toISOString()]
   );
   const [ev] = runSvc.listRunEvents(run.id, {});
   assert.equal(ev.payload.nested.api_key, '[redacted]', '读取端必须过滤敏感键（双层脱敏第二层）');

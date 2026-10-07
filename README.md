@@ -17,7 +17,7 @@
 - **人物 / 世界观 / 事件账本**：AI 只提案，人工采纳后才写入台账，带乐观锁与审计
 - **上下文管理**：多 Provider 上下文预算管道、四节式会话压缩、连续压缩继承摘要、来源快照过期检测，按会话查看调用用量与上下文组成
 - **BYOK 服务商与模型管理**：添加服务商、编辑密钥与模型列表、切换活动模型；密钥保存在本机服务端数据库，配置接口只返回掩码
-- **本地向量检索（RAG）**：章节正文自动切块建向量索引，Embedding 由本地模型完成（`@xenova/transformers`，不出本机），同书余弦 top-k 检索供上下文管道、证据搜索与 LLM 工具调用
+- **本地向量检索（RAG）**：章节正文自动切块建向量索引，Embedding 由本地模型完成（`@huggingface/transformers`，不出本机），同书余弦 top-k 检索供上下文管道、证据搜索与 LLM 工具调用
 - **风格仓库**：作家卡（人设 + 指纹 + 规则 + 范文）管理与体检
 - **本地持久化**：sql.js（SQLite WASM）单文件数据库，含单实例锁与自动备份，无需外部服务
 
@@ -38,6 +38,20 @@ npm start
 首次启动会下载本地 Embedding 模型（约 90MB，用于章节向量索引与检索），之后完全离线可用。
 
 端口可用环境变量覆盖：`PORT=8080 npm start`。前端开发调试可用 `npm run dev`（Vite 热更新），代理默认连接 `http://127.0.0.1:3110`，可用 `MOZHEN_DEV_ORIGIN` 指定后端地址。
+
+## 当前 dev 的依赖安全更新
+
+dev 已接收依赖安全修复；当前正式 Release 仍为 1.2.0。试用这些修复请使用 dev 分支源码，确认稳定后再发布正式版本。
+
+本地 Embedding 改用 Hugging Face Transformers.js 的 q8 CPU 运行时，模型缓存默认保存在 `data/embedding-cache`；可用 `NOVEL_EMBED_CACHE_DIR` 指定缓存目录，`HF_ENDPOINT` 指定模型下载地址。
+
+从旧版升级时：
+
+1. 停止自己的应用实例，并备份 `data/novel.db`。
+2. 在执行 `npm ci` 前，把旧 `node_modules/@xenova/transformers/.cache` 中的模型缓存内容复制到 `data/embedding-cache`（或设置的缓存目录）。没有旧缓存时，首次启动需要联网下载模型。
+3. 执行 `npm ci`、`npm run build` 后启动。迁移 033 会失效旧章节和范文向量，保留正文、范文与其他业务内容；定稿章节会自动重建索引，期间语义检索可能暂时降级。使用离线范文语义选样的维护者需通过 `server/style/retrieve.indexSamples(packId)` 重建对应风格包向量。
+
+回滚时使用升级前的数据库备份及其对应依赖，避免混用两个运行时的向量。
 
 ## 示例数据
 
@@ -70,7 +84,7 @@ Remove-Item Env:NOVEL_DB_FILE
 
 - 前端：React 19 + react-router + Vite，Tailwind CSS 4 与 Radix UI（`frontend/`，构建产物经 Express 静态服务）
 - 后端：Node.js + Express 5，sql.js（SQLite WASM）持久化到 `data/novel.db`
-- 检索：`@xenova/transformers` 本地 Embedding + 余弦检索（`server/vector/`），向量存于同一份 SQLite 库
+- 检索：`@huggingface/transformers` 本地 Embedding + 余弦检索（`server/vector/`），向量存于同一份 SQLite 库
 - LLM：OpenAI 兼容协议，设置页可切换服务商与模型
 
 ## 目录结构

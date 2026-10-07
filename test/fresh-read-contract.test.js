@@ -11,6 +11,7 @@
 // 工具执行器、上下文组装、终态裁决都在真实管线内；key 一律 sk-test-xxx。
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { EventEmitter } = require('node:events');
 const { db, createTempLocation, cleanup } = require('./helpers/temp-db');
 const { createApp } = require('../server/app');
 const { listen } = require('./helpers/http');
@@ -387,13 +388,13 @@ function agentSse(text) {
 function captureResponse() {
   const chunks = [];
   const decoder = new TextDecoder();
-  return {
+  return Object.assign(new EventEmitter(), {
     chunks,
-    setHeader() {}, writeHead() {}, flushHeaders() {}, once() {}, removeListener() {}, on() {},
+    setHeader() {}, writeHead() {}, flushHeaders() {},
     writableEnded: false, writableFinished: false, statusCode: 200,
     write(chunk) { chunks.push(typeof chunk === 'string' ? chunk : decoder.decode(chunk)); return true; },
-    end() { this.writableFinished = true; },
-  };
+    end() { this.writableEnded = true; this.writableFinished = true; this.emit('finish'); },
+  });
 }
 
 function metadataOf(res) {
@@ -432,6 +433,7 @@ test('R01 Agent 入口：服务端真实只读预备步骤产生凭据，同一�
   assert.equal(String(receipt.contentHash).length, 64);
   assert.equal(run.status, 'finished', JSON.stringify(run));
   assert.equal(outcome && outcome.status, 'finished', JSON.stringify(outcome));
+  assert.equal(res.listenerCount('close'), 0, 'SDK stream must remove its close listener on completion');
   const modelContext = JSON.stringify(fx.stub.calls[0].body.messages);
   assert.ok(modelContext.includes(NEW_SENTINEL), '模型上下文必须含本轮真实读取到的新正文');
   assert.ok(!modelContext.includes(OLD_SENTINEL), '不得把旧正文当作本轮读取结果注入');

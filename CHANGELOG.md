@@ -2,6 +2,13 @@
 
 本文记录面向用户的公开版本变化；源码与使用说明见 [Releases](https://github.com/1while1/Plotforge/releases)。
 
+## 未发布 — dev
+
+- 更新代理地址、查询解析、source map 与 AI SDK 网络依赖；替换旧 undici/busboy 依赖链。
+- 本地 Embedding 迁移到 Hugging Face Transformers.js 4.3.1、q8 CPU 与持久模型缓存，修复 ONNX/protobufjs/sharp 依赖告警。
+- 新增迁移 033，使旧章节和范文向量失效，避免混用不同 ONNX 运行时生成的向量；正文与范文保留。
+- 增加全依赖/生产依赖审计，以及 Linux Node 24 原生模型推理、索引检索和离线缓存 CI 验证。
+
 ## 1.2.0 — 2026-10-07
 
 - 写作工作台 UI 更新，增加主题、主色、正文字体与行宽设置。

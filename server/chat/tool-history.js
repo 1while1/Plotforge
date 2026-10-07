@@ -1,4 +1,7 @@
 const db = require('../db');
+const {
+  TOOL_FACT_RESULT_MAX_CHARS, TOOL_FACT_TOTAL_MAX_CHARS, TOOL_FACTS_PER_RUN,
+} = require('../context/history-budget');
 
 const clip = (value, length) => Array.from(String(value || '')).slice(0, length).join('');
 
@@ -21,14 +24,15 @@ function toolFact(name, args, result) {
   const payload = parse(text, null);
   const pending = payload?.status === 'confirmation_required';
   return { name, args: safeArgs(args), status: pending ? 'pending' : /^\[工具错误\]/u.test(text) || payload?.error || payload?.ok === false ? 'failed' : 'success',
-    confirmationId: payload?.confirmation_id || null, result: clip(text, 1200) };
+    confirmationId: payload?.confirmation_id || null, result: clip(text, TOOL_FACT_RESULT_MAX_CHARS) };
 }
 
-function serializeHistory(events, hooks, target = {}) {
+function serializeHistory(events, hooks, target = {}, extra = {}) {
   return JSON.stringify([...(events || []), { kind: 'run', version: 1,
     chapterId: target.targetChapterId || target.anchorChapterId || null,
     mode: target.mode || 'chapter', state: hooks._runState || null,
-    facts: (hooks._toolFacts || []).slice(-16) }]);
+    intent: extra.intent || null,
+    facts: (hooks._toolFacts || []).slice(-TOOL_FACTS_PER_RUN) }]);
 }
 
 function historyFacts(rows, bookId, scope) {
@@ -46,11 +50,11 @@ function historyFacts(rows, bookId, scope) {
       if (fact.confirmationId) {
         const action = db.get('SELECT status, result_json, expires_at FROM chat_actions WHERE id = ? AND book_id = ?', [fact.confirmationId, bookId]);
         fact.status = action ? action.status === 'pending' && action.expires_at <= Date.now() ? 'expired' : action.status : 'unknown';
-        if (action?.result_json && fact.status === 'approved') fact.result = clip(action.result_json, 1200);
+        if (action?.result_json && fact.status === 'approved') fact.result = clip(action.result_json, TOOL_FACT_RESULT_MAX_CHARS);
         else fact.result = fact.status === 'pending' ? '等待作者确认，尚未执行' : '未确认成功：' + fact.status;
       }
-      const line = JSON.stringify({ tool: fact.name, status: fact.status, args: fact.args, confirmationId: fact.confirmationId, result: clip(fact.result, 1200) });
-      if (used + line.length > 4000) continue;
+      const line = JSON.stringify({ tool: fact.name, status: fact.status, args: fact.args, confirmationId: fact.confirmationId, result: clip(fact.result, TOOL_FACT_RESULT_MAX_CHARS) });
+      if (used + line.length > TOOL_FACT_TOTAL_MAX_CHARS) continue;
       lines.unshift(line);
       used += line.length;
     }

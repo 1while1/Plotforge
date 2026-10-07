@@ -7,7 +7,11 @@
 // props 契约＝本片冻结件（Plan §5）：items/picks（受控消息 id 数组）/onTogglePick/pendingSlot/liveSlot；
 // 槽位顺序＝messages → pendingSlot → liveSlot（S5-9 的实时气泡与确认卡挂槽）。
 // 纪律：零 fetch、零全局写入；一切文本走 React 文本节点（＝legacy textContent），不用 innerHTML。
+
+import { useEffect, useRef } from "react";
+import { agentToolLabel } from "../lib/agent-tool-labels.js";
 import { makeSourceTag } from "../lib/chat-render.js";
+import { attachBottomFollow, scrollToBottom } from "../lib/scroll-follow.js";
 
 const AGENT_TAG = makeSourceTag("agent");
 const SYSTEM_SUFFIX = " · 系统事件";
@@ -19,8 +23,7 @@ function call(fn, ...args) {
 
 export function scrollMessagesToBottom() {
 	if (typeof document === "undefined") return;
-	const m = document.getElementById("agent-messages");
-	if (m) m.scrollTop = m.scrollHeight;
+	scrollToBottom(document.getElementById("agent-messages"));
 }
 
 function toolBlock(t, index) {
@@ -32,7 +35,7 @@ function toolBlock(t, index) {
 	}
 	return (
 		<details className="tool-call" key={`${t.name || "tool"}:${index}`}>
-			<summary>{`调用工具 · ${t.name || ""}（${t.status || ""}）`}</summary>
+			<summary>{`调用工具 · ${agentToolLabel(t.name)}（${t.status || ""}）`}</summary>
 			{text ? <pre className="tool-call-io">{text}</pre> : null}
 		</details>
 	);
@@ -76,8 +79,10 @@ export default function AgentMessageList({
 	pendingSlot,
 	liveSlot,
 }) {
+	const ref = useRef(null);
+	useEffect(() => attachBottomFollow(ref.current), []);
 	return (
-		<div id="agent-messages" className="chat-messages">
+		<div id="agent-messages" className="chat-messages" ref={ref}>
 			{(items || []).map((m, i) => messageNode(m, i, picks, onTogglePick))}
 			{pendingSlot}
 			{liveSlot}

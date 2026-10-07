@@ -16,6 +16,7 @@ const actionStore = require('../actionStore');
 const runSvc = require('../runtime/run-service');
 const conversationSvc = require('../conversations/service');
 const { historyFacts } = require('../chat/tool-history');
+const { toModelHistory } = require('../agent/history-messages');
 const { systemPromptTokenBudget } = require('../llm');
 
 const router = express.Router();
@@ -77,10 +78,7 @@ ${assembled.text}`,
     const factText = historyFacts(factRows, bookId, null);
     if (factText) msgs.push({ role: 'system', content: factText });
   }
-  for (const m of ctx.messages) {
-    if (m.role !== 'user' && m.role !== 'assistant') continue;
-    msgs.push(m.source === 'system' ? { role: 'system', content: m.content } : { role: m.role, content: m.content });
-  }
+  msgs.push(...toModelHistory(ctx.messages));
   msgs.push({ role: 'user', content: newContent });
   return msgs;
 }
@@ -453,9 +451,7 @@ router.post('/actions/:confirmationId/resume', async (req, res, next) => {
     const conv = requireAgentConversation(conversationId);
     // 服务端历史组装 + 系统事件（可信执行结果，非用户消息）
     const ctx = conversationSvc.getConversationContext({ conversationId: conv.id });
-    const historyPairs = ctx.messages
-      .filter(m => m.role === 'user' || m.role === 'assistant')
-      .map(m => (m.source === 'system' ? { role: 'system', content: m.content } : { role: m.role, content: m.content }));
+    const historyPairs = toModelHistory(ctx.messages);
     const factRows = ctx.messages.filter(m => m.tools_json);
     let resumeMessages;
     if (factRows.length) {

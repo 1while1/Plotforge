@@ -588,7 +588,7 @@ describe("T5 ChatWorkspace（legacy 块三）", () => {
 		const send = h.node("btn-send");
 		expect(send.textContent).toBe("发送");
 		expect(send.disabled).toBe(false);
-		// 外部写值 + input 事件（FocusModeOverlay.jsx:177-190 注入链）→ 受控 textarea 状态同步
+		// 外部写值 + input 事件（脚本注入链）→ 受控 textarea 状态同步
 		// 等值真实时序：命令式写值与随后的提交是两拍，中间必有一次 React 提交（故包在 act 内）
 		await act(async () => {
 			text.value = "外部写入的正文";
@@ -956,6 +956,11 @@ describe("T5 ChatWorkspace（legacy 块三）", () => {
 							role: "assistant",
 							content: "【需要确认】\n1. 接下来怎么写？（续写／改大纲）",
 						},
+						{
+							id: 2,
+							role: "assistant",
+							content: "林栖推开门，雨还在下。",
+						},
 					],
 				}),
 			},
@@ -982,21 +987,33 @@ describe("T5 ChatWorkspace（legacy 块三）", () => {
 		);
 		expect(JSON.parse(h.lastInit.body).content).toBe("续写");
 		expect(h.node("chat-text").value).toBe("");
-		// 插入到当前章节（不 dispatch input——等值 legacy）
-		const insert = [...document.querySelectorAll("#chat-messages button")].find(
-			(b) => b.textContent === "插入到当前章节",
+		// 插入到当前章节：派发冒泡 input，编辑器脏标记与自动保存链才会接上；确认提问不给插入入口
+		const insertBtns = [
+			...document.querySelectorAll("#chat-messages button"),
+		].filter((b) => b.textContent === "插入到当前章节");
+		expect(
+			insertBtns.some((b) =>
+				b.closest(".msg").textContent.includes("【需要确认】"),
+			),
+		).toBe(false);
+		const insert = insertBtns.find((b) =>
+			b.closest(".msg").textContent.includes("林栖推开门"),
 		);
 		h.node("chapter-content").value = "原有正文";
+		const inputEvents = [];
+		const onInput = (e) => inputEvents.push(e.bubbles);
+		h.node("chapter-content").addEventListener("input", onInput);
 		act(() => {
 			insert.click();
 		});
-		const expectedContent =
-			"原有正文\n\n【需要确认】\n1. 接下来怎么写？（续写／改大纲）";
+		h.node("chapter-content").removeEventListener("input", onInput);
+		const expectedContent = "原有正文\n\n林栖推开门，雨还在下。";
 		expect(h.node("chapter-content").value).toBe(expectedContent);
 		expect(h.node("word-count").textContent).toBe(
 			`共 ${expectedContent.replace(/\s/g, "").length} 字`,
 		);
-		expect(h.toasts).toContain("已插入，记得保存");
+		expect(inputEvents).toEqual([true]);
+		expect(h.toasts).toContain("已插入，停笔 3 秒后自动保存");
 		// 无当前章 → 提示（:965-968）
 		window.App.state.currentChapterId = null;
 		act(() => {

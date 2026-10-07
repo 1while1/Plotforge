@@ -1,0 +1,103 @@
+/* 新界面样式入口（Tailwind v4）。三条约束：
+   1. 旧样式（base.css 及其后各文件）未分层。层内样式无论特异度多高都输给未分层样式，
+      所以工具类必须不分层输出（下方 utilities.css 的 @import 不带 layer()）。
+   2. 不引入 preflight：它会重置旧页面依赖的浏览器默认样式。新组件需要的最小基底见文末，
+      只作用于带 data-slot 的组件，且用 :where() 把特异度压到 0。
+   3. 扫描源只限新代码目录：旧代码里的 class 名若被扫到，会生成同名工具类反向污染旧页面。
+      新增目录要同步加 @source，并受 frontend/styles/tailwind-scope.test.js 守护。 */
+@import "tailwindcss/theme.css" layer(theme);
+/* 原 public/style.css：必须排在所有未分层样式之前（见 base.css 文件头） */
+@import "./base.css";
+@import "./tokens.css";
+@import "./book-shell.css";
+@import "./app-pages.css";
+
+@import "tailwindcss/utilities.css" source(none);
+@source "../components/ui";
+@source "../shell";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme inline {
+	--color-background: var(--mz-bg);
+	--color-foreground: var(--mz-text);
+	--color-card: var(--mz-surface);
+	--color-card-foreground: var(--mz-text);
+	--color-popover: var(--mz-surface);
+	--color-popover-foreground: var(--mz-text);
+	--color-primary: var(--mz-accent);
+	--color-primary-hover: var(--mz-accent-hover);
+	--color-primary-foreground: var(--mz-accent-fg);
+	--color-primary-soft: var(--mz-accent-soft);
+	--color-primary-bright: var(--mz-accent-bright);
+	--color-secondary: var(--mz-surface-2);
+	--color-secondary-foreground: var(--mz-text);
+	--color-muted: var(--mz-surface-2);
+	--color-muted-foreground: var(--mz-text-3);
+	--color-accent: var(--mz-hover);
+	--color-accent-foreground: var(--mz-text);
+	--color-subtle: var(--mz-text-2);
+	--color-faint: var(--mz-text-3);
+	--color-surface: var(--mz-surface);
+	--color-destructive: var(--mz-danger);
+	--color-success: var(--mz-success);
+	--color-warn: var(--mz-warn);
+	--color-warn-soft: var(--mz-warn-soft);
+	--color-border: var(--mz-line);
+	--color-border-strong: var(--mz-line-2);
+	--color-input: var(--mz-line-2);
+	--color-ring: var(--mz-accent);
+	--color-rail: var(--mz-rail);
+	--color-rail-foreground: var(--mz-rail-text);
+	--color-rail-hover: var(--mz-rail-hover);
+	--color-rail-active: var(--mz-rail-active);
+
+	--font-ui: var(--mz-ui-font);
+	--font-read: var(--mz-read-font);
+	--font-mono: var(--mz-mono);
+
+	--radius-sm: calc(var(--mz-radius) - 3px);
+	--radius-md: calc(var(--mz-radius) - 1px);
+	--radius-lg: var(--mz-radius);
+	--radius-xl: calc(var(--mz-radius) + 4px);
+
+	--shadow-pop: var(--mz-shadow-pop);
+}
+
+/* 替代 preflight 的最小基底（特异度 0：任何工具类或旧样式都能覆盖它） */
+:where([data-slot]),
+:where([data-slot]) *,
+:where([data-slot])::before,
+:where([data-slot])::after {
+	box-sizing: border-box;
+	border-color: var(--color-border);
+}
+:where(button[data-slot]) {
+	margin: 0;
+	padding: 0;
+	border: 0 solid var(--color-border);
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+}
+:where(button[data-slot]):disabled {
+	cursor: not-allowed;
+}
+:where(input[data-slot], textarea[data-slot]) {
+	font: inherit;
+	color: inherit;
+}
+:where([data-slot] svg) {
+	display: inline-block;
+	flex-shrink: 0;
+}
+
+/* 全站显隐开关（React 与 DOM 代码统一切这个类），必须压过任何 display 规则（含 #id 级）。
+   必须排在 utilities.css 之后：lightningcss 1.33 压缩时遇到「同选择器、同属性」的两条规则
+   会删掉前一条且不看 !important——放在前面时会被 Tailwind 的 .hidden 工具类吞掉 !important。
+   !important 与位置无关地胜出，所以放在文末不改变级联结果。 */
+.hidden {
+	/* biome-ignore lint/complexity/noImportantStyles: 见上方说明 */
+	display: none !important;
+}

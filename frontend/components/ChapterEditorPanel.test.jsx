@@ -1424,9 +1424,10 @@ describe("ChapterEditorPanel 组件（范式 A·判定 C 旧名桥＋死锚点�
 		const staticIds = Array.from(staticBody.querySelectorAll("[id]")).map(
 			(n) => n.id,
 		);
-		const liveIds = Array.from(
-			byId("editor-body").querySelectorAll("[id]"),
-		).map((n) => n.id);
+		// 外观菜单触发钮的 id 由 Radix 运行时生成，不属于静态壳契约
+		const liveIds = Array.from(byId("editor-body").querySelectorAll("[id]"))
+			.map((n) => n.id)
+			.filter((id) => !id.startsWith("radix-"));
 		expect(liveIds).toEqual(staticIds);
 		// 类名与 tag 逐字一致（样式依赖）
 		for (const sel of [
@@ -1441,13 +1442,15 @@ describe("ChapterEditorPanel 组件（范式 A·判定 C 旧名桥＋死锚点�
 			"#btn-enter-refine",
 			"#btn-polish-selection",
 			"#btn-save-chapter",
+			"#btn-lock-chapter",
+			".editor-toolbar",
 			".editor-head",
 			".editor-actions",
+			".editor-canvas",
+			".editor-doc",
+			".editor-eyebrow",
+			".chapter-beat-box",
 			".editor-foot",
-			".refine-cta",
-			".refine-cta-main",
-			".refine-cta-title",
-			".refine-cta-hint",
 		]) {
 			const staticNode = staticBody.querySelector(sel);
 			const liveNode = byId("editor-body").querySelector(sel);

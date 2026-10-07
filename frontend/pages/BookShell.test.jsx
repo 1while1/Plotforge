@@ -30,6 +30,7 @@ import {
 	resetInstalledForTests,
 	restoreWritingReturn,
 	saveWritingReturn,
+	selectLeftTab,
 	toggleLeftPanel,
 } from "./BookShell.jsx";
 
@@ -389,7 +390,11 @@ describe("BookShell（legacy book.js:171-205 ＋ 壳面）", () => {
 		expect(byId("book-workbench").classList.contains("left-collapsed")).toBe(
 			true,
 		);
-		expect(byId("btn-toggle-left-panel").textContent).toBe("展开侧栏");
+		// UI 优化阶段 1：按钮改为纯图标，文案走 aria-label，图标不得被冲掉
+		expect(byId("btn-toggle-left-panel").getAttribute("aria-label")).toBe(
+			"展开侧栏",
+		);
+		expect(byId("btn-toggle-left-panel").querySelector("svg")).not.toBe(null);
 		expect(byId("btn-toggle-left-panel").getAttribute("aria-expanded")).toBe(
 			"false",
 		);
@@ -402,7 +407,10 @@ describe("BookShell（legacy book.js:171-205 ＋ 壳面）", () => {
 			await sleep(5);
 		});
 		expect(localStorage.getItem("writing_layout_v1:B1")).toBe("full");
-		expect(byId("btn-toggle-left-panel").textContent).toBe("收起侧栏");
+		expect(byId("btn-toggle-left-panel").getAttribute("aria-label")).toBe(
+			"收起侧栏",
+		);
+		expect(byId("btn-toggle-left-panel").querySelector("svg")).not.toBe(null);
 		expect(byId("btn-toggle-left-panel").getAttribute("aria-expanded")).toBe(
 			"true",
 		);
@@ -414,6 +422,132 @@ describe("BookShell（legacy book.js:171-205 ＋ 壳面）", () => {
 		expect(byId("book-workbench").classList.contains("left-collapsed")).toBe(
 			false,
 		);
+	});
+
+	it("R8-7b 写作助手折叠：按书记忆、chat-collapsed 类/aria；点击顶栏按钮切换且不卸载对话节点", async () => {
+		localStorage.setItem("writing_chat_layout_v1:B1", "collapsed");
+		await showBook();
+		const bench = byId("book-workbench");
+		const btn = byId("btn-toggle-chat-panel");
+		const messages = byId("chat-messages");
+		expect(bench.classList.contains("chat-collapsed")).toBe(true);
+		expect(btn.getAttribute("aria-label")).toBe("展开写作助手");
+		expect(btn.getAttribute("aria-expanded")).toBe("false");
+		expect(btn.classList.contains("mode-on")).toBe(true);
+		await act(async () => {
+			btn.click();
+			await sleep(5);
+		});
+		expect(localStorage.getItem("writing_chat_layout_v1:B1")).toBe("full");
+		expect(bench.classList.contains("chat-collapsed")).toBe(false);
+		expect(btn.getAttribute("aria-label")).toBe("收起写作助手");
+		expect(byId("chat-messages")).toBe(messages);
+		// 与左栏折叠互不影响
+		expect(bench.classList.contains("left-collapsed")).toBe(false);
+	});
+
+	it("R8-7d 窄屏抽屉：两个折叠按钮与导航栏只开合抽屉，不改按书记住的收起偏好", async () => {
+		const original = window.matchMedia;
+		window.matchMedia = (q) => ({
+			matches: true,
+			media: q,
+			addEventListener() {},
+			removeEventListener() {},
+		});
+		try {
+			await showBook();
+			const bench = byId("book-workbench");
+			await act(async () => {
+				byId("btn-toggle-left-panel").click();
+				await sleep(5);
+			});
+			expect(bench.classList.contains("nav-drawer-open")).toBe(true);
+			expect(bench.classList.contains("left-collapsed")).toBe(false);
+			expect(localStorage.getItem("writing_layout_v1:B1")).toBe(null);
+			expect(byId("btn-toggle-left-panel").getAttribute("aria-expanded")).toBe(
+				"true",
+			);
+			// 同一时间只开一个抽屉
+			await act(async () => {
+				byId("btn-toggle-chat-panel").click();
+				await sleep(5);
+			});
+			expect(bench.classList.contains("chat-drawer-open")).toBe(true);
+			expect(bench.classList.contains("nav-drawer-open")).toBe(false);
+			expect(localStorage.getItem("writing_chat_layout_v1:B1")).toBe(null);
+			// 导航栏点当前标签：抽屉开着就收起，收着就打开
+			const tab = document.querySelector("#panel-left .tab.active");
+			selectLeftTab(tab.dataset.tab);
+			expect(bench.classList.contains("nav-drawer-open")).toBe(true);
+			selectLeftTab(tab.dataset.tab);
+			expect(bench.classList.contains("nav-drawer-open")).toBe(false);
+		} finally {
+			window.matchMedia = original;
+		}
+	});
+
+	it("R8-7c 全局导航栏：渲染进 #book-rail；标签项就地切左栏、收起时先展开、再点当前项收起；文风链接带书 id", async () => {
+		await showBook();
+		const rail = byId("book-rail");
+		const labels = [...rail.querySelectorAll("[data-rail]")].map(
+			(el) => el.textContent,
+		);
+		expect(labels).toEqual([
+			"书架",
+			"写作",
+			"助手",
+			"大纲",
+			"人物",
+			"世界",
+			"台账",
+			"文风",
+			"设置",
+			"个人",
+		]);
+		expect(rail.querySelector('[data-rail="cards"]').getAttribute("href")).toBe(
+			"#/book/B1/cards",
+		);
+		// ChapterEditorPanel 已 mock：用最小点击处理模拟它对 .tab[data-tab] 的切换
+		const tabs = [...document.querySelectorAll("#panel-left .tab[data-tab]")];
+		for (const t of tabs)
+			t.addEventListener("click", () => {
+				for (const o of tabs) o.classList.toggle("active", o === t);
+			});
+		const item = (key) => rail.querySelector(`[data-rail="${key}"]`);
+		const bench = byId("book-workbench");
+		expect(item("chapters").getAttribute("aria-pressed")).toBe("true");
+
+		await act(async () => {
+			item("characters").click();
+			await sleep(5);
+		});
+		expect(
+			document
+				.querySelector('#panel-left .tab[data-tab="characters"]')
+				.classList.contains("active"),
+		).toBe(true);
+		expect(item("characters").getAttribute("aria-pressed")).toBe("true");
+		expect(item("chapters").getAttribute("aria-pressed")).toBe("false");
+
+		// 再点当前项：收起左栏
+		await act(async () => {
+			item("characters").click();
+			await sleep(5);
+		});
+		expect(bench.classList.contains("left-collapsed")).toBe(true);
+		expect(localStorage.getItem("writing_layout_v1:B1")).toBe("collapsed");
+
+		// 收起状态点任意标签项：先展开再切换
+		await act(async () => {
+			item("world").click();
+			await sleep(5);
+		});
+		expect(bench.classList.contains("left-collapsed")).toBe(false);
+		expect(
+			document
+				.querySelector('#panel-left .tab[data-tab="world"]')
+				.classList.contains("active"),
+		).toBe(true);
 	});
 
 	it("R8-8 bindShellEvents 幂等与两按钮行为：开书后点击左栏按钮切换；返回锚拦截跳转（:120-137）", async () => {

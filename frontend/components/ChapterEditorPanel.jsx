@@ -23,11 +23,27 @@
 import { useEffect, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
+import { useWritingPrefs } from "../hooks/use-writing-prefs.js";
 import { getApp } from "../lib/app-runtime.js";
 import { createStore } from "../lib/chapter-collapse.js";
 import { getWorkspaceState } from "../lib/workspace-state.js";
+import { getChapterTarget } from "../lib/writing-prefs.js";
 import { bindEditorDirtyProvider } from "../lib/writing-status.js";
 import { withWritingStatusRefresh } from "../pages/BookShell.jsx";
+import {
+	ChapterFilterBar,
+	ChapterFoot,
+	ChapterRowMeta,
+	chapterWords,
+	formatWordCount,
+	matchesChapterFilter,
+} from "../shell/ChapterListChrome.jsx";
+import {
+	AppearanceMenu,
+	ContinuePreview,
+	EditorEyebrow,
+	EditorMeta,
+} from "../shell/EditorChrome.jsx";
 import { showConflictDialog } from "./ChapterConflictDialog.jsx";
 import {
 	bind as bindDiff,
@@ -79,12 +95,32 @@ function createChapterEditorController({ listEl }) {
 		for (const fn of Array.from(listeners)) fn(listModel);
 	}
 
+	// 编辑区工具条（状态徽章 / 字数进度）的数据源：只镜像命令式写点，不反向驱动 DOM
+	let editorMeta = { locked: false, relock: false, words: 0, chapterId: null };
+	const metaListeners = new Set();
+	function setEditorMeta(patch) {
+		const next = { ...editorMeta, ...patch };
+		if (
+			next.locked === editorMeta.locked &&
+			next.relock === editorMeta.relock &&
+			next.words === editorMeta.words &&
+			next.chapterId === editorMeta.chapterId
+		)
+			return;
+		editorMeta = next;
+		for (const fn of Array.from(metaListeners)) fn(editorMeta);
+	}
+
 	function updateWordCount() {
 		const content = $("chapter-content");
 		if (!content) return;
 		const len = content.value.replace(/\s/g, "").length;
 		const wc = $("word-count");
 		if (wc) wc.textContent = `共 ${len} 字`;
+		setEditorMeta({
+			words: len,
+			chapterId: App.state.currentChapterId ?? null,
+		});
 	}
 
 	function currentEdit() {
@@ -739,6 +775,7 @@ function createChapterEditorController({ listEl }) {
 		if (!btn) return;
 		btn.textContent = locked ? "解除定稿" : "定稿";
 		btn.classList.toggle("mode-on", locked);
+		setEditorMeta({ locked });
 	}
 
 	// 「定稿后被修改」警示条（:711-716）
@@ -746,6 +783,7 @@ function createChapterEditorController({ listEl }) {
 		const banner = $("relock-banner");
 		if (!banner) return;
 		banner.classList.toggle("hidden", !show);
+		setEditorMeta({ relock: !!show });
 	}
 
 	async function toggleLock() {
@@ -1031,6 +1069,13 @@ function createChapterEditorController({ listEl }) {
 		isVolumeCollapsed: (volId) =>
 			collapseStore.isCollapsed(currentBookId(), volId),
 		isActiveChapter: (id) => id === App.state.currentChapterId,
+		bookId: () => currentBookId(),
+		currentChapterId: () => App.state.currentChapterId,
+		getEditorMeta: () => editorMeta,
+		subscribeEditorMeta: (fn) => {
+			metaListeners.add(fn);
+			return () => metaListeners.delete(fn);
+		},
 		onVolumeRowClick,
 		onChapterRowClick,
 		handleBeforeUnload,
@@ -1053,7 +1098,7 @@ function createChapterEditorController({ listEl }) {
 
 // ---------- React 渲染面 ----------
 // 目录行：等价 legacy :282-346 的 innerHTML 整表（同一 controller 的两处渲染面之一）
-function ChapterRow({ ch, volId, collapsed, controller }) {
+function ChapterRow({ ch, volId, collapsed, controller, target }) {
 	const active = controller.isActiveChapter(ch.id);
 	let lockBadge = null;
 	if (ch.locked) {
@@ -1108,6 +1153,7 @@ function ChapterRow({ ch, volId, collapsed, controller }) {
 				</span>
 			) : null}
 			{lockBadge}
+			<ChapterRowMeta ch={ch} target={target} />
 			<span className="item-ops">
 				<button
 					className="icon-btn edit-chapter"
@@ -1131,7 +1177,7 @@ function ChapterRow({ ch, volId, collapsed, controller }) {
 	);
 }
 
-function OrphanChapterRow({ ch, controller }) {
+function OrphanChapterRow({ ch, controller, target }) {
 	const active = controller.isActiveChapter(ch.id);
 	return (
 		// biome-ignore lint/a11y/useKeyWithClickEvents: 等值 legacy :390 的 li.onclick 纯鼠标交互，不加键盘语义
@@ -1159,6 +1205,7 @@ function OrphanChapterRow({ ch, controller }) {
 					索引缺失
 				</span>
 			) : null}
+			<ChapterRowMeta ch={ch} target={target} />
 			<span className="item-ops">
 				<button
 					className="icon-btn edit-chapter"
@@ -1182,15 +1229,21 @@ function OrphanChapterRow({ ch, controller }) {
 	);
 }
 
-function DirectoryRows({ model, controller }) {
+function DirectoryRows({ model, controller, filter = "all", target }) {
 	const volumeIds = {};
 	for (const vol of model.volumes) volumeIds[vol.id] = true;
 	const orphanChapters = model.chapters.filter(
-		(c) => !c.volume_id || !volumeIds[c.volume_id],
+		(c) =>
+			(!c.volume_id || !volumeIds[c.volume_id]) &&
+			matchesChapterFilter(c, filter),
 	);
 	const rows = [];
 	for (const vol of model.volumes) {
-		const volChapters = model.chapters.filter((c) => c.volume_id === vol.id);
+		const allInVol = model.chapters.filter((c) => c.volume_id === vol.id);
+		const volChapters = allInVol.filter((c) => matchesChapterFilter(c, filter));
+		// 筛选时没有命中章节的卷整卷隐去；「全部」下空卷照常显示（卷头是建章/编辑卷的入口）
+		if (filter !== "all" && !volChapters.length) continue;
+		const volWords = allInVol.reduce((sum, c) => sum + chapterWords(c), 0);
 		const collapsed = controller.isVolumeCollapsed(vol.id);
 		rows.push(
 			// biome-ignore lint/a11y/useKeyWithClickEvents: 等值 legacy :353 的卷头 li.onclick 纯鼠标交互（编辑/删除/折叠三态），不加键盘语义
@@ -1211,6 +1264,9 @@ function DirectoryRows({ model, controller }) {
 					</span>
 				) : null}
 				<span className="vol-count">{volChapters.length} 章</span>
+				<span className="vol-words" title="本卷约计字数">
+					{formatWordCount(volWords)}
+				</span>
 				<span className="item-ops">
 					<button
 						className="icon-btn edit-vol"
@@ -1233,6 +1289,7 @@ function DirectoryRows({ model, controller }) {
 					volId={vol.id}
 					collapsed={collapsed}
 					controller={controller}
+					target={target}
 				/>,
 			);
 		}
@@ -1256,6 +1313,7 @@ function DirectoryRows({ model, controller }) {
 					key={`orphan-${ch.id}`}
 					ch={ch}
 					controller={controller}
+					target={target}
 				/>,
 			);
 		}
@@ -1263,12 +1321,14 @@ function DirectoryRows({ model, controller }) {
 	return rows;
 }
 
-// 编辑器壳：index.html:178-216 逐字（id/tag/class 与静态壳一致——命令式代码与样式表同源依赖）。
+// 编辑器壳：与 index.html 的 #editor-body 静态壳 id 顺序/tag/class 一致（命令式代码与样式表同源依赖）。
 // 常量 props ⇒ React 重渲染不重写被命令式改过的 class/text/value。
+// UI 优化阶段 2（样稿 B）：工具条（状态徽章/字数进度/操作）置顶、正文区成为居中文档；
+// EditorMeta / EditorEyebrow / AppearanceMenu 是自带订阅的展示件，不碰这些命令式节点。
 // 唯一属性差异：静态壳中 7 个按钮无 type（DOM 默认 submit）而此处补 type="button"——两处均不在
 // <form> 内（index.html :176-217 无 form 祖先），全仓零代码读取这些按钮的 .type，行为零变化；
 // 补该属性是 biome lint/a11y/useButtonType 零诊断要求（S5-1/既有组件同规）。
-function EditorShell() {
+function EditorShell({ controller }) {
 	return (
 		<>
 			<div id="diff-view" className="diff-view hidden">
@@ -1296,6 +1356,45 @@ function EditorShell() {
 				{/* #diff-body：React 不写 children 的叶容器（MozhenDiffView.show 的命令式 root 宿主） */}
 				<div id="diff-body" className="diff-body"></div>
 			</div>
+			<div className="editor-toolbar">
+				<EditorMeta controller={controller} />
+				<div className="editor-actions">
+					<button
+						id="btn-polish-chapter"
+						className="btn btn-small btn-outline"
+						type="button"
+					>
+						润色本章
+					</button>
+					<button
+						id="btn-gen-summary"
+						className="btn btn-small btn-outline"
+						type="button"
+					>
+						生成总结
+					</button>
+					<button id="btn-save-chapter" className="btn btn-small" type="button">
+						保存
+					</button>
+					<button
+						id="btn-enter-refine"
+						className="btn btn-small refine-btn"
+						type="button"
+						title="在阅读/精修页打开本章，逐段打磨字句"
+					>
+						精修
+					</button>
+					<button
+						id="btn-lock-chapter"
+						className="btn btn-small btn-outline"
+						type="button"
+						title="定稿：作者确认本章不再修改，定稿后内容才会进入向量检索（供 AI 召回旧剧情细节）"
+					>
+						定稿
+					</button>
+					<AppearanceMenu />
+				</div>
+			</div>
 			<div id="relock-banner" className="relock-banner hidden">
 				<span>
 					本章曾定稿，正文已修改：语义检索已暂停覆盖本章。核对内容后可重新定稿。
@@ -1308,100 +1407,104 @@ function EditorShell() {
 					重新定稿
 				</button>
 			</div>
-			<div className="editor-head">
-				<input
-					id="chapter-title-input"
-					className="chapter-title-input"
-					type="text"
-					placeholder="章节标题"
-				/>
-				<div className="editor-actions">
-					<button
-						id="btn-lock-chapter"
-						className="btn btn-small btn-outline"
-						type="button"
-						title="定稿：作者确认本章不再修改，定稿后内容才会进入向量检索（供 AI 召回旧剧情细节）"
-					>
-						定稿
-					</button>
-					<button
-						id="btn-polish-chapter"
-						className="btn btn-small btn-outline"
-						type="button"
-					>
-						润色本章
-					</button>
-					<button id="btn-save-chapter" className="btn btn-small" type="button">
-						保存
-					</button>
-					<button
-						id="btn-gen-summary"
-						className="btn btn-small btn-outline"
-						type="button"
-					>
-						生成总结
-					</button>
+			<div className="editor-canvas">
+				<div className="editor-doc">
+					<EditorEyebrow controller={controller} />
+					<div className="editor-head">
+						<input
+							id="chapter-title-input"
+							className="chapter-title-input"
+							type="text"
+							placeholder="章节标题"
+						/>
+					</div>
+					<label className="chapter-beat-box">
+						<span className="chapter-beat-label">节拍</span>
+						<input
+							id="chapter-beat"
+							className="chapter-beat"
+							type="text"
+							placeholder="本章节拍（可选）：本章必须完成的剧情节点，AI 写作时会参考"
+						/>
+					</label>
+					<textarea
+						id="chapter-content"
+						className="chapter-content"
+						placeholder="在这里写作，或从对话中插入 AI 生成的内容…"
+					></textarea>
+					<ContinuePreview controller={controller} />
+					<div className="editor-foot">
+						<button
+							id="btn-polish-selection"
+							className="btn btn-small btn-ghost hidden"
+							type="button"
+						>
+							润色选中段落
+						</button>
+						<span id="word-count" className="word-count"></span>
+					</div>
+					<div id="summary-box" className="summary-box hidden">
+						<div className="summary-label">
+							本章总结{" "}
+							<span className="summary-hint">
+								（AI 写下一章时会参考，防止剧情漂移）
+							</span>
+						</div>
+						<p id="summary-text"></p>
+					</div>
 				</div>
 			</div>
-			<input
-				id="chapter-beat"
-				className="chapter-beat"
-				type="text"
-				placeholder="本章节拍（可选）：本章必须完成的剧情节点，AI 写作时会参考"
-			/>
-			<textarea
-				id="chapter-content"
-				className="chapter-content"
-				placeholder="在这里写作，或从对话中插入 AI 生成的内容…"
-			></textarea>
-			<div className="editor-foot">
-				<button
-					id="btn-polish-selection"
-					className="btn btn-small btn-ghost hidden"
-					type="button"
-				>
-					润色选中段落
-				</button>
-				<span id="word-count" className="word-count"></span>
-			</div>
-			<div id="summary-box" className="summary-box hidden">
-				<div className="summary-label">
-					本章总结{" "}
-					<span className="summary-hint">
-						（AI 写下一章时会参考，防止剧情漂移）
-					</span>
-				</div>
-				<p id="summary-text"></p>
-			</div>
-			<button
-				id="btn-enter-refine"
-				className="refine-cta"
-				type="button"
-				title="在阅读/精修页打开本章，逐段打磨字句"
-			>
-				<span className="refine-cta-main">
-					<i className="refine-cta-line"></i>
-					<span className="refine-cta-title">进入精修</span>
-					<i className="refine-cta-line"></i>
-				</span>
-				<span className="refine-cta-hint">沉浸阅读 · 逐段打磨</span>
-			</button>
 		</>
 	);
 }
 
-function ChapterEditorPanel({ controller }) {
+function ChapterEditorPanel({ controller, chrome = {} }) {
 	const [model, setModel] = useState(() => controller.getListModel());
+	const [filter, setFilter] = useState("all");
+	const prefs = useWritingPrefs();
 	useEffect(() => controller.subscribe(setModel), [controller]);
+	const bookId = controller.bookId?.();
+	const target = getChapterTarget(bookId, prefs);
 	return (
 		<>
 			{controller.listEl
 				? createPortal(
-						<DirectoryRows model={model} controller={controller} />,
+						<DirectoryRows
+							model={model}
+							controller={controller}
+							filter={filter}
+							target={target}
+						/>,
 						controller.listEl,
 					)
 				: null}
-			<EditorShell />
+			{chrome.filterEl
+				? createPortal(
+						<ChapterFilterBar
+							chapters={model.chapters}
+							filter={filter}
+							onChange={setFilter}
+						/>,
+						chrome.filterEl,
+					)
+				: null}
+			{chrome.totalEl
+				? createPortal(
+						model.chapters.length ? ` · ${model.chapters.length}` : null,
+						chrome.totalEl,
+					)
+				: null}
+			{chrome.footEl
+				? createPortal(
+						<ChapterFoot
+							chapters={model.chapters}
+							bookId={bookId}
+							target={target}
+						/>,
+						chrome.footEl,
+					)
+				: null}
+			<EditorShell controller={controller} />
 		</>
 	);
 }
@@ -1432,6 +1535,22 @@ export function chapterEditorApi() {
 	return currentApi || NULL_API;
 }
 
+// 跨挂载根订阅编辑器状态（章号/字数/定稿态）：聊天面的「本章上下文」随切章刷新
+let currentController = null;
+export function subscribeEditorMeta(fn) {
+	return currentController
+		? currentController.subscribeEditorMeta(fn)
+		: () => {};
+}
+export function getEditorMetaSnapshot() {
+	return currentController ? currentController.getEditorMeta() : null;
+}
+export function getEditorListModel() {
+	return currentController
+		? currentController.getListModel()
+		: { volumes: [], chapters: [], version: 0 };
+}
+
 // 自挂载（registerLegacyBridges 调用；容器缺失 no-op；同元素幂等——壳节点常驻不卸载）
 export function mountChapterEditor() {
 	if (typeof window === "undefined") return null;
@@ -1443,13 +1562,19 @@ export function mountChapterEditor() {
 	const root = createRoot(editorBody);
 	editorBody.__mozhenChapterEditorRoot = root;
 	currentApi = controller.api;
+	currentController = controller;
 	// P6-2（Plan §2.5-D2）：把编辑器脏标记接入 lib 供给缝——等值 run-status.js:238-239 读
 	// `chapterEditorApi().hasUnsavedChanges?.()`（该名此前由本文件的 api 承接）；去全局后由本缝供给。
 	bindEditorDirtyProvider(() => chapterEditorApi().hasUnsavedChanges());
 	installBeforeUnload(controller);
 	// 首挂 flushSync：保证 show() 内后续 bindStatusInputs()/selectChapter() 见到的已是 React 节点
+	const chrome = {
+		filterEl: document.getElementById("chapter-filter"),
+		totalEl: document.getElementById("chapter-total"),
+		footEl: document.getElementById("chapter-foot"),
+	};
 	flushSync(() => {
-		root.render(<ChapterEditorPanel controller={controller} />);
+		root.render(<ChapterEditorPanel controller={controller} chrome={chrome} />);
 	});
 	return currentApi;
 }

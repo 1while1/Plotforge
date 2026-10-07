@@ -1,0 +1,250 @@
+/* AI 助手页（#/agent）。UI 优化阶段 4 从 public/style.css 原样迁入，随后按样稿 B 换装。 */
+
+/* ================= AI 助手页 ================= */
+.agent-main {
+	flex: 1;
+	display: grid;
+	grid-template-columns: 260px minmax(0, 1fr);
+	gap: 16px;
+	padding: 16px 24px 24px;
+	max-width: 1280px;
+	width: 100%;
+	margin: 0 auto;
+	min-height: 0;
+}
+.agent-main.with-preview {
+	grid-template-columns: 240px minmax(0, 1fr) 320px;
+	max-width: 1440px;
+}
+.agent-tools-panel {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	box-shadow: var(--shadow);
+	display: flex;
+	flex-direction: column;
+	align-self: start;
+	max-height: calc(100vh - 168px);
+	overflow: hidden;
+}
+.agent-tools-hint {
+	font-size: 12px;
+	color: var(--muted);
+	margin: 6px 0 12px;
+}
+.agent-tool-list {
+	list-style: none;
+}
+.agent-tool-item {
+	padding: 8px 0;
+	border-bottom: 1px solid var(--border);
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.agent-tool-item:last-child {
+	border-bottom: none;
+}
+.agent-tool-name {
+	font-family: Consolas, "Courier New", monospace;
+	font-size: 12px;
+	color: var(--accent);
+}
+.agent-tool-desc {
+	font-size: 12px;
+	color: var(--ink-soft);
+	line-height: 1.5;
+}
+.agent-model-tag {
+	font-size: 12px;
+	color: var(--muted);
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	padding: 1px 10px;
+	margin-left: 10px;
+}
+.agent-chat-panel {
+	display: flex;
+	flex-direction: column;
+	min-height: 0;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	box-shadow: var(--shadow);
+}
+.agent-chat-panel .chat-messages {
+	flex: 1;
+	max-height: none;
+}
+
+/* S4-01b：顶部范围栏（范围 / 当前会话 / 剧情边界 / 讨论或执行 + 状态行） */
+.agent-scope-bar {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 14px;
+	padding: 8px 24px;
+	background: var(--surface);
+	border-bottom: 1px solid var(--border);
+	flex-shrink: 0;
+}
+.agent-scope-field {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	color: var(--muted);
+}
+.agent-scope-field select {
+	max-width: 220px;
+	font-size: 12px;
+}
+.agent-scope-label {
+	letter-spacing: 1px;
+}
+.agent-scope-status {
+	font-size: 12px;
+	color: var(--ink-soft);
+	margin-left: auto;
+}
+.agent-side-tabs {
+	flex-shrink: 0;
+}
+.agent-conversation-list {
+	margin-bottom: 4px;
+}
+.agent-conversation-item .agent-conv-title {
+	font-size: 13px;
+}
+.agent-conversation-item .agent-conv-meta {
+	font-size: 11px;
+	color: var(--muted);
+}
+.agent-conversation-item.active {
+	border-color: var(--accent);
+}
+.agent-res-type {
+	font-size: 12px;
+	max-width: 130px;
+}
+.agent-res-list {
+	margin-top: 4px;
+}
+.agent-res-item {
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 2px;
+}
+.agent-res-title {
+	font-size: 13px;
+}
+.agent-res-meta {
+	font-size: 11px;
+	color: var(--muted);
+	line-height: 1.5;
+}
+/* 右侧来源/资源预览：需要时才展开（.agent-main.with-preview 加第三列） */
+.agent-preview-panel {
+	display: flex;
+	flex-direction: column;
+	align-self: start;
+	max-height: calc(100vh - 168px);
+	overflow-y: auto;
+}
+.agent-preview-body {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 0 16px 16px;
+	font-size: 12px;
+}
+.agent-preview-title {
+	font-size: 13px;
+	color: var(--ink);
+	font-weight: 500;
+}
+.agent-preview-row {
+	display: flex;
+	gap: 8px;
+}
+.agent-preview-key {
+	color: var(--muted);
+	min-width: 72px;
+	flex-shrink: 0;
+}
+.agent-preview-value {
+	flex: 1;
+	color: var(--ink-soft);
+	word-break: break-word;
+	white-space: pre-wrap;
+}
+.agent-preview-link {
+	align-self: flex-start;
+	text-decoration: none;
+}
+
+/* 工具调用块：与消息气泡同风格，折叠呈现 */
+.tool-call {
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--paper);
+	margin: 6px 0;
+	font-size: 12px;
+	max-width: 85%;
+}
+.tool-call summary {
+	cursor: pointer;
+	user-select: none;
+	padding: 6px 10px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	list-style: none;
+}
+.tool-call summary::-webkit-details-marker {
+	display: none;
+}
+.tool-call-name {
+	font-family: Consolas, "Courier New", monospace;
+	color: var(--accent);
+}
+.tool-call-status {
+	color: var(--muted);
+	margin-left: auto;
+	font-style: italic;
+}
+.tool-call-status.done {
+	color: var(--accent);
+	font-style: normal;
+}
+.tool-call-io {
+	margin: 0 10px 8px;
+	padding: 8px 10px;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	font-family: Consolas, "Courier New", monospace;
+	font-size: 11px;
+	line-height: 1.5;
+	white-space: pre-wrap;
+	word-break: break-all;
+	max-height: 220px;
+	overflow-y: auto;
+	color: var(--ink-soft);
+}
+
+@media (max-width: 900px) {
+	.agent-main {
+		grid-template-columns: 1fr;
+	}
+	.agent-tools-panel {
+		max-height: 300px;
+	}
+	.agent-preview-panel {
+		max-height: 300px;
+	}
+	.agent-scope-status {
+		margin-left: 0;
+		flex-basis: 100%;
+	}
+}

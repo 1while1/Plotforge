@@ -31,6 +31,7 @@
 // 编辑器脏标记改走 `lib/writing-status.js` 的供给缝（等值原 `window.BookPage.hasUnsavedChanges?.()`）。
 // 单例状态（persistenceSnapshot/savePending/resourceStamps）落在工厂闭包内＝一实例一份。
 
+import { agentToolLabel } from "./agent-tool-labels.js";
 import { getApp as appGetApp } from "./app-runtime.js";
 import * as writingStatus from "./writing-status.js";
 
@@ -250,7 +251,12 @@ export function createRunStatus(deps) {
 		});
 		const doc = getDoc();
 		const el = doc ? doc.getElementById("writing-status-save") : null;
-		if (el) el.textContent = badge;
+		if (el) {
+			el.textContent = badge;
+			// 顶栏保存状态的色点按状态着色（样式见 frontend/styles/book-shell.css）
+			el.dataset.state =
+				Object.keys(SAVE_BADGES).find((k) => SAVE_BADGES[k] === badge) || "";
+		}
 		return badge;
 	};
 
@@ -478,7 +484,7 @@ export function createRunStatus(deps) {
 		return card;
 	};
 
-	// ---------- 渲染（DOM API；模块自带样式，不改 style.css）----------
+	// ---------- 渲染（DOM API；模块自带样式，不改全局样式表）----------
 	const STYLE_ID = "run-status-style";
 	function ensureStyle() {
 		const doc = getDoc();
@@ -567,7 +573,7 @@ export function createRunStatus(deps) {
 			model.tools.forEach((t) => {
 				const li = doc.createElement("li");
 				li.textContent =
-					(t.name || "工具") +
+					(t.name ? agentToolLabel(t.name) : "工具") +
 					" · 目标：" +
 					(t.target || "未提供") +
 					" · 来源版本：" +
@@ -589,7 +595,7 @@ export function createRunStatus(deps) {
 				const li = doc.createElement("li");
 				li.textContent =
 					(e.code ? `[${e.code}] ` : "") +
-					(e.toolName || "") +
+					agentToolLabel(e.toolName) +
 					"：" +
 					(e.message || "");
 				eul.appendChild(li);

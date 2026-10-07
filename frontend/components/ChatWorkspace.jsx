@@ -5,16 +5,35 @@
 // 缺容器 no-op，并在建 root 前先拆掉 registerLegacyBridges→mountChatJumpBottom 在静态壳上留下的
 // 悬挂 root（Plan §5 纪律 8）。
 // 纪律：本文件零 fetch、零 `window.BookPage` 写入（只有 `el.__mozhenChatRoot` 元素级缓存）。
-import { createElement } from "react";
+import {
+	createElement,
+	useEffect,
+	useState,
+	useSyncExternalStore,
+} from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import {
 	createChatWorkspaceController,
 	useChatWorkspace,
 } from "../hooks/use-chat-workspace.js";
+import {
+	getFocusState,
+	setFocusChatOpen,
+	subscribeFocusState,
+} from "../lib/focus-state.js";
 import { withWritingStatusRefresh } from "../pages/BookShell.jsx";
+import {
+	getEditorMetaSnapshot,
+	subscribeEditorMeta,
+} from "./ChapterEditorPanel.jsx";
 import { CharacterListPanel } from "./CharacterListPanel.jsx";
 import { ChatActionCard } from "./ChatActionCard.jsx";
+import {
+	ChapterContextPane,
+	ConsultPane,
+	ContinueStyleMenu,
+} from "./ChatAiPanes.jsx";
 import { unmount as unmountChatJumpBottom } from "./ChatJumpBottom.jsx";
 import { ChatPanel } from "./ChatPanel.jsx";
 import { ChatToolEventBlock } from "./ChatToolEventBlock.jsx";
@@ -106,10 +125,66 @@ const NULL_API = {
 function ChatWorkspace({ controller }) {
 	const ws = useChatWorkspace(controller);
 	const state = ws.state;
+	const [tab, setTab] = useState("chat");
+	const consultOn = !!ws.composer.consult;
+	// 「参谋」标签与输入框上的参谋开关是同一个状态的两个入口：切标签即切开关，反之亦然
+	const onTabChange = (next) => {
+		setTab(next);
+		if ((next === "consult") !== consultOn && next !== "context")
+			ws.composer.onToggleConsult?.();
+	};
+	const composer = {
+		...ws.composer,
+		onToggleConsult: () => {
+			ws.composer.onToggleConsult?.();
+			setTab(consultOn ? "chat" : "consult");
+		},
+		onSend: () => {
+			if (tab === "context") setTab(consultOn ? "consult" : "chat");
+			return ws.composer.onSend();
+		},
+	};
+	const typingOn = ws.typing != null;
+	const focus = useSyncExternalStore(
+		subscribeFocusState,
+		getFocusState,
+		getFocusState,
+	);
+	composer.focus = focus.active;
+	composer.focusChatOpen = focus.chatOpen;
+	composer.onToggleFocusChat = () => setFocusChatOpen(!focus.chatOpen);
+
+	const editorChapterId = useSyncExternalStore(
+		subscribeEditorMeta,
+		() => getEditorMetaSnapshot()?.chapterId ?? null,
+		() => null,
+	);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 切到「本章上下文」或切章时重新组装（controller 稳定）
+	useEffect(() => {
+		if (tab === "context") controller.loadChapterContext();
+	}, [tab, editorChapterId]);
+
 	return (
 		<>
 			<ChatPanel
 				bare
+				tab={tab}
+				onTabChange={onTabChange}
+				headExtra={<ContinueStyleMenu />}
+				consultPane={
+					<ConsultPane
+						records={state.consultLog}
+						typing={typingOn ? ws.live : null}
+						onClear={() => controller.clearConsultLog()}
+					/>
+				}
+				contextPane={
+					<ChapterContextPane
+						ctx={state.chapterContext}
+						onRefresh={() => controller.loadChapterContext()}
+						onOpenDetail={() => controller.openCtxBreakdown()}
+					/>
+				}
 				conversations={state.conversations}
 				currentConversationId={state.currentConversationId}
 				onConversationChange={(id) => controller.switchConversation(id)}
@@ -125,9 +200,11 @@ function ChatWorkspace({ controller }) {
 					onHandoffOrigin: (info) => controller.openHandoffOrigin(info),
 					pendingActions: state.pendingActions,
 					cardProps: ws.cardProps,
-					live: ws.live,
+					live: typingOn ? null : ws.live,
+					previewContent: state.previewContent,
+					onLocatePreview: () => controller.locatePreview(),
 				}}
-				composer={ws.composer}
+				composer={composer}
 				onOpenCtxDetail={() => controller.openCtxBreakdown()}
 				onCompress={() => controller.compressContext()}
 				onClear={() => controller.clearChat()}

@@ -14,13 +14,16 @@ import {
 	makeSourceTag,
 	parseQuickReplies,
 } from "../lib/chat-render.js";
+import { looksLikeProse } from "../lib/continue-preview.js";
+import { attachBottomFollow, scrollToBottom } from "../lib/scroll-follow.js";
 import { ChatActionCard } from "./ChatActionCard.jsx";
 import { ChatActionLogRow } from "./ChatActionLogRow.jsx";
-import { ChatToolEventBlock } from "./ChatToolEventBlock.jsx";
+import { ChatStepItem } from "./ChatStepItem.jsx";
 
-// 等价 legacy scrollBottom（:281-284）：把 #chat-messages 置底
+// 等价 legacy scrollBottom（:281-284）：把 #chat-messages 置底；屏外消息按占位高度参与布局，
+// 置底后真实高度还会变，交给 scrollToBottom 逐帧补滚到稳定
 export function scrollBottom(el) {
-	if (el) el.scrollTop = el.scrollHeight;
+	scrollToBottom(el);
 }
 
 function asText(v) {
@@ -82,12 +85,14 @@ function toolRows(tools) {
 	});
 }
 
-function MessageRow({
+export function MessageRow({
 	m,
 	onInsertToChapter,
 	onQuickReply,
 	onArchiveRestore,
 	onHandoffOrigin,
+	previewContent,
+	onLocatePreview,
 }) {
 	const role = m.role;
 	const content = asText(m.content);
@@ -118,6 +123,9 @@ function MessageRow({
 	if (role === "consultant") {
 		// 参谋建议：只提供展开/收起，不提供插入正文（:931-945）
 		if (isLong) actions = <div className="msg-actions">{toggleBtn}</div>;
+	} else if (role === "assistant" && m.compressed !== 2 && !looksLikeProse(m)) {
+		// 提问、改稿说明、操作汇报不是正文，不给插入入口
+		if (isLong) actions = <div className="msg-actions">{toggleBtn}</div>;
 	} else if (role === "assistant") {
 		actions = (
 			<div className="msg-actions">
@@ -138,6 +146,16 @@ function MessageRow({
 					</button>
 				) : (
 					<>
+						{previewContent && content.trim() === previewContent ? (
+							<button
+								type="button"
+								className="btn btn-small btn-outline msg-locate"
+								title="这段续写已在正文末尾预览，确认后才写入"
+								onClick={() => onLocatePreview?.()}
+							>
+								定位到正文
+							</button>
+						) : null}
 						<button
 							type="button"
 							className="btn btn-small btn-outline"
@@ -173,7 +191,7 @@ function MessageRow({
 			{role !== "user" ? <RetrievalBlock hits={m.retrieval} /> : null}
 			{role !== "user" && Array.isArray(m.tools) && m.tools.length
 				? toolRows(m.tools).map(({ tool, key }) => (
-						<ChatToolEventBlock key={key} event={tool} />
+						<ChatStepItem key={key} event={tool} />
 					))
 				: null}
 			<div className={clamped ? "msg-bubble clamped" : "msg-bubble"}>
@@ -245,14 +263,18 @@ export function ChatMessageList({
 	pendingActions,
 	cardProps,
 	rootRef,
+	previewContent,
+	onLocatePreview,
 }) {
 	const list = Array.isArray(messages) ? messages : [];
 	const wrapRef = useRef(null);
 	const count = list.length;
-	// biome-ignore lint/correctness/useExhaustiveDependencies: 依存 legacy appendMsg 末尾 scrollBottom（:1044）——消息数变化即置底；count 故意入依赖但回调内不取值（滚动的是容器本身）
+	const firstId = list[0]?.id ?? null;
+	useEffect(() => attachBottomFollow(wrapRef.current), []);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: 依存 legacy appendMsg 末尾 scrollBottom（:1044）——消息数变化或换会话（首条 id 变）即置底；依赖只作触发条件
 	useEffect(() => {
 		scrollBottom(wrapRef.current);
-	}, [count]);
+	}, [count, firstId]);
 	const archived = list.filter((m) => m && m.compressed === 1);
 	const flow = list.filter((m) => m && m.compressed !== 1);
 	// key 只作 React 身份、不参与文案/DOM（legacy 逐条 append 无 key 概念）；缺 id 时用序号兜底
@@ -279,6 +301,8 @@ export function ChatMessageList({
 				onQuickReply={onQuickReply}
 				onArchiveRestore={onArchiveRestore}
 				onHandoffOrigin={onHandoffOrigin}
+				previewContent={previewContent}
+				onLocatePreview={onLocatePreview}
 			/>,
 		);
 	}

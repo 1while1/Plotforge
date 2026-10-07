@@ -1,6 +1,11 @@
+import "./styles/app.css";
 import { createRoot } from "react-dom/client";
 import App from "./App.jsx";
 import { initFrontendRuntime } from "./bridges/legacy-bridge.jsx";
+import { initAppearance } from "./lib/appearance.js";
+
+// 外观偏好须在任何挂件渲染前写上 <html> 的 data-*，避免首帧闪回默认主色
+initAppearance();
 
 // P6-2（⑨ 切换笔）：旧名桥与 index.html 三段内联承接桩同笔退役，装载期副作用收敛为一处。
 // 时序契约（boot-order.test.jsx T6-2 静态见证）：取得运行时单例 → runStatus.observeApi() →

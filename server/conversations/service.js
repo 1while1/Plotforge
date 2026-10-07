@@ -167,14 +167,9 @@ function getConversationContext({ conversationId, limit = CONTEXT_MESSAGE_LIMIT 
   const conv = getConversation(conversationId);
   if (!conv) throw fail(404, 'CONVERSATION_NOT_FOUND', '会话不存在');
   const cap = Math.min(Math.max(1, Number(limit) || CONTEXT_MESSAGE_LIMIT), 200);
-  const rows = db.all(
-    `SELECT id, role, content, source, tools_json, tool_facts_json FROM messages
-     WHERE conversation_id = ? AND COALESCE(compressed, 0) != 1
-     ORDER BY id DESC LIMIT ?`,
-    [conversationId, cap]
-  ).reverse();
+  const selected = require('./history-selection').selectHistory({ conversationId, limit: cap });
   const toolFacts = [];
-  for (const row of rows) {
+  for (const row of selected) {
     const facts = parseFacts(row.tool_facts_json);
     if (!facts) continue;
     const list = Array.isArray(facts) ? facts : [facts];
@@ -185,7 +180,10 @@ function getConversationContext({ conversationId, limit = CONTEXT_MESSAGE_LIMIT 
   }
   return {
     conversation: { id: conv.id, kind: conv.kind, scope: conv.scope, book_id: conv.book_id, status: conv.status },
-    messages: rows.map(r => ({ id: r.id, role: r.role, content: r.content, source: r.source || '', tools_json: r.tools_json || '' })),
+    messages: selected.map(r => ({
+      id: r.id || null, role: r.role, content: r.content,
+      source: r.summary ? 'system' : (r.source || ''), tools_json: r.tools_json || '',
+    })),
     toolFacts,
   };
 }

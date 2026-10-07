@@ -564,7 +564,7 @@ test('目标归档或有活跃运行：采纳拒绝，不混进正在发给模�
   assert.equal(countMessages(scene.writingOtherConvId), 1);
 });
 
-// S6-02 / L16 现场（真实模型 20 组；现场记录 C:/tmp/moyan-s6/live/records-first.jsonl 的
+// S6-02 / L16 现场（真实模型 20 组；现场记录 系统临时证据目录 的
 // staleBusyObservation）：忙判据必须看「有没有仍未结算的确认卡」，而不是「有没有历史
 // awaiting_confirmation 运行行」。写作运行暂停等作者确认 → 作者在写作页结算（批准/拒绝）后
 // 运行行仍停在 awaiting_confirmation（根因＝S2 域「action 结算后运行行未终态化」，见 08 台账 §13.2

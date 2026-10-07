@@ -7,12 +7,13 @@
 // show/hide 用 React state：rAF 节流 sync（距底 scrollHeight-scrollTop-clientHeight
 // > SHOW_THRESHOLD=160 切 .show，等价旧 :28~37）；scroll passive + MutationObserver
 // (childList) + ResizeObserver 三观察逐字保留（含 window.* 存在性守卫，旧 :42~45）；
-// 点击 scrollTo({top, behavior:'smooth'})（旧 :39~41）。不干预流式期间的自动滚底
+// 点击经 lib/scroll-follow.js 置底并恢复贴底跟随（旧 :39~41 的 smooth 会停在半路）。不干预流式期间的自动滚底
 // （book-chat.js scrollBottom）语义；模块未加载时页面无任何痕迹——mount 无目标即
 // return。旧全局 window.ChatJumpBottom 不留 shim（全仓零消费，Plan D1）。
 import { useEffect, useRef, useState } from "react";
 import { createPortal, flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
+import { scrollToBottom } from "../lib/scroll-follow.js";
 
 const SHOW_THRESHOLD = 160; // 距底超过该像素才浮现
 
@@ -57,8 +58,9 @@ export function JumpButton({ messages }) {
 		};
 	}, [messages]);
 
+	// 不用 scrollTo smooth：动画终点在起跳时算定，屏外消息渲染出真实高度后终点就过期，会停在半路
 	const onJumpClick = () => {
-		messages.scrollTo({ top: messages.scrollHeight, behavior: "smooth" });
+		scrollToBottom(messages);
 	};
 
 	return createPortal(

@@ -187,12 +187,18 @@ describe("T5 ChatMessageList（legacy 行号锚点）", () => {
 			],
 		});
 		const row = messages()[0];
-		expect(row.querySelectorAll("details.tool-call").length).toBe(2);
+		// UI 优化 2c：写作页工具块改为步骤清单行（details.tool-call.step），友好名＋关键入参
+		expect(row.querySelectorAll("details.tool-call.step").length).toBe(2);
 		const classes = [...row.children].map((el) => el.className);
-		expect(classes.indexOf("tool-call")).toBeGreaterThan(-1);
-		expect(classes.indexOf("tool-call")).toBeLessThan(
+		expect(classes.indexOf("tool-call step")).toBeGreaterThan(-1);
+		expect(classes.indexOf("tool-call step")).toBeLessThan(
 			classes.indexOf("msg-bubble"),
 		);
+		const names = [...row.querySelectorAll(".step-name")].map(
+			(n) => n.textContent,
+		);
+		expect(names).toEqual(["语义检索旧文", "阅读章节"]);
+		expect(row.querySelector(".step-hint")).toBeNull();
 	});
 
 	it("T5-6 参谋分支：仅长文给展开/收起，无插入正文（:931-945）", async () => {
@@ -220,6 +226,67 @@ describe("T5 ChatMessageList（legacy 行号锚点）", () => {
 		// 短参谋消息无按钮（:933）
 		render({ messages: [{ id: 2, role: "consultant", content: "短语" }] });
 		expect(messages()[0].querySelector(".msg-actions")).toBeNull();
+	});
+
+	it("助手回复不像正文（提问/改稿说明/操作汇报/写操作回合）时不给插入入口", () => {
+		const report = `本章（第4章）已按思路重写完成，已提交生效（revision 9，全文1737字）。${"说".repeat(150)}\n\n调整要点：\n- 删掉了俏皮比喻；\n- 学校一天压缩成过场。`;
+		render({
+			messages: [
+				{ id: 1, role: "assistant", content: report },
+				{ id: 2, role: "assistant", content: "【需要确认】走 A 还是 B？" },
+				{
+					id: 3,
+					role: "assistant",
+					content: "已经按你的意思改好了。",
+					actionLogs: [
+						{ id: "a1", name: "replace_chapter", status: "approved" },
+					],
+				},
+				{ id: 4, role: "assistant", content: "林栖推开门，雨还在下。" },
+				{
+					id: 5,
+					role: "assistant",
+					content:
+						"已提交操作「replace_chapter」，等待作者确认，尚未生效。确认后将使用真实执行结果继续，不会猜测新实体ID。",
+				},
+			],
+		});
+		const labels = messages().map((row) =>
+			[...row.querySelectorAll(".msg-actions button")].map(
+				(b) => b.textContent,
+			),
+		);
+		expect(labels[0]).toEqual(["展开全文"]);
+		expect(labels[1]).toEqual([]);
+		expect(labels[2]).toEqual([]);
+		expect(labels[3]).toEqual(["插入到当前章节"]);
+		expect(labels[4]).toEqual([]);
+	});
+
+	it("助手回复的插入入口随服务端意图标注变化：discussion 不给、prose 给", () => {
+		render({
+			messages: [
+				{
+					id: 1,
+					role: "assistant",
+					content: "林栖推开门，雨还在下。",
+					intent: "discussion",
+				},
+				{
+					id: 2,
+					role: "assistant",
+					content: "林栖推开门，雨还在下。",
+					intent: "prose",
+				},
+			],
+		});
+		const labels = messages().map((row) =>
+			[...row.querySelectorAll(".msg-actions button")].map(
+				(b) => b.textContent,
+			),
+		);
+		expect(labels[0]).toEqual([]);
+		expect(labels[1]).toEqual(["插入到当前章节"]);
 	});
 
 	it("T5-7 助手分支：插入正文回调／长文展开；归档态只有「还原压缩前的对话」（:946-988）", async () => {

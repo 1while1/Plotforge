@@ -78,7 +78,7 @@ const GRID = CONF_BANDS.map((b) => {
 });
 
 // 曲线 SVG（renderChart :213-239 逐字）：五档 grid＋轴标签、人类原文实测区间线、x 轴、
-// ≥2 点的 path.chart-line、带 <title> 的 chart-dot。id 契约 #curve-chart 由 style.css:2075 钉住。
+// ≥2 点的 path.chart-line、带 <title> 的 chart-dot。id 契约 #curve-chart 由 styles/pages/stylelab.css 钉住。
 function CurveChart({ series }) {
 	const pts = plotPoints(series, {
 		width: W,

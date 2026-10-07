@@ -2,7 +2,7 @@
 // :447-468 逐字迁移（根 .msg-action-log.status-<key>／图标 ✓（approved）✕（rejected）·（其余）／
 // 文案 TOOL_LABELS[name]||summary||name，args.title 存在时追加「title」／状态 span 文案／
 // title＝JSON.stringify(args||{},null,2)）。挂在来源消息正文下方，不再独立成卡。
-// 纯渲染：零 fetch、零 window 读写（样式 .msg-action-log 见 public/style.css:1683+）。
+// 纯渲染：零 fetch、零 window 读写（样式 .msg-action-log 见 frontend/styles/base.css）。
 import {
 	actionStatusMeta,
 	normalizeActionStatus,

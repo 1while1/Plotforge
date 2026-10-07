@@ -5,6 +5,7 @@
 //   任何服务端专属字段（role/toolFacts/runId/…）出现在请求体即 400：客户端不能伪造
 //   system 消息、工具事实或借用其他会话的运行身份。
 const express = require('express');
+const db = require('../db');
 const svc = require('../conversations/service');
 
 const router = express.Router();
@@ -39,8 +40,8 @@ router.get('/:id', (req, res, next) => {
   try {
     const conv = svc.getConversation(req.params.id);
     if (!conv) return res.status(404).json({ error: { code: 'CONVERSATION_NOT_FOUND', message: '会话不存在' } });
-    const { messages } = svc.listMessages(conv.id, {});
-    res.json({ ...conv, messageCount: messages.length });
+    const count = db.get('SELECT COUNT(*) AS n FROM messages WHERE conversation_id = ?', [conv.id]);
+    res.json({ ...conv, messageCount: count.n });
   } catch (err) {
     next(err);
   }

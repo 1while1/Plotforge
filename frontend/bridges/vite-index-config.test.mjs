@@ -4,8 +4,8 @@
 //   ① `root:'frontend'`／`base:'/'`／`build.outDir:'../public'`（解析为仓根 `public/`）；
 //   ② 产物命名 `assetsDir:'app/assets'`／`entryFileNames:'app/entry.js'` ⇒ 服务面 URL 仍
 //      `/app/entry.js`（与入场逐字相同，驱动零改）；
-//   ③ **安全联锁**：`emptyOutDir !== true`——置 true 会清掉 `public/legacy/**`（4 件死锚点）与
-//      `public/style.css`（灾难面，Plan §1.2-5）；且 outDir 解析不得为仓根。
+//   ③ **安全联锁**：`emptyOutDir !== true`——置 true 会清掉 `public/legacy/**`（4 件死锚点，
+//      灾难面，Plan §1.2-5；原 `public/style.css` 已于 UI 优化阶段 5 并入构建）；且 outDir 解析不得为仓根。
 //   ④ dev 代理键零改（5 条存量路径正则键，dev-proxy.test.mjs T2 同口径）。
 //
 // 红态成因（HEAD `cb9b22b`）：`base:'/app/'`／`outDir:'../public/app'`／`emptyOutDir:true`
@@ -54,7 +54,7 @@ describe("T2 Vite HTML 入口配置契约（index.html 产物化）", () => {
 		}
 	});
 
-	it("T2-3 安全联锁：emptyOutDir 非 true（防清 public/legacy 与 public/style.css）；outDir 解析不为仓根", () => {
+	it("T2-3 安全联锁：emptyOutDir 非 true（防清 public/legacy）；outDir 解析不为仓根", () => {
 		expect(loadedConfig.build.emptyOutDir).not.toBe(true);
 		const resolved = path.resolve(
 			REPO_ROOT,

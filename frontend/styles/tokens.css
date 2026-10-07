@@ -1,0 +1,124 @@
+/* 设计令牌（样稿 B「工作台」）。偏好由 frontend/lib/appearance.js 写到 <html> 的 data-* 属性上：
+   data-theme（light|dark）/ data-accent / data-read-font / data-read-width。 */
+:root {
+	--mz-bg: #f5f6f8;
+	--mz-surface: #ffffff;
+	--mz-surface-2: #f8f9fa;
+	--mz-hover: #f0f1f3;
+	--mz-text: #111418;
+	--mz-text-2: #4a515c;
+	--mz-text-3: #7d8591;
+	--mz-line: #e5e7eb;
+	--mz-line-2: #d7dbe0;
+
+	--mz-rail: #101418;
+	--mz-rail-text: #8e98a4;
+	--mz-rail-hover: #1c232b;
+	--mz-rail-active: #1f2b33;
+
+	--mz-accent: #0f766e;
+	--mz-accent-hover: #0b625b;
+	--mz-accent-fg: #ffffff;
+	--mz-accent-soft: #e7f3f1;
+	--mz-accent-bright: #3fb8a9;
+
+	--mz-success: #1f9d63;
+	--mz-warn: #b7791f;
+	--mz-warn-soft: #fdf3e2;
+	--mz-danger: #b42318;
+
+	--mz-ui-font:
+		"Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+	--mz-read-font: "DengXian", "等线", "Microsoft YaHei", sans-serif;
+	--mz-mono: "Cascadia Mono", "Consolas", monospace;
+	--mz-read-width: 760px;
+	--mz-radius: 8px;
+	--mz-shadow-pop:
+		0 10px 30px -10px rgba(16, 20, 24, 0.25), 0 2px 6px rgba(16, 20, 24, 0.06);
+}
+
+/* 主色（亮色） */
+:root[data-accent="indigo"] {
+	--mz-accent: #3a506b;
+	--mz-accent-hover: #2f4258;
+	--mz-accent-soft: #eaeef3;
+	--mz-accent-bright: #7d9cc0;
+}
+:root[data-accent="plum"] {
+	--mz-accent: #6b4a8a;
+	--mz-accent-hover: #583b73;
+	--mz-accent-soft: #f1ecf6;
+	--mz-accent-bright: #b08ad3;
+}
+:root[data-accent="ochre"] {
+	--mz-accent: #9a5b25;
+	--mz-accent-hover: #80491c;
+	--mz-accent-soft: #f7eee5;
+	--mz-accent-bright: #d9a066;
+}
+
+/* 暗色主题 */
+:root[data-theme="dark"] {
+	--mz-bg: #0f1215;
+	--mz-surface: #16191d;
+	--mz-surface-2: #1b1f24;
+	--mz-hover: #22272d;
+	--mz-text: #e6e8eb;
+	--mz-text-2: #a9b0b9;
+	--mz-text-3: #6f7782;
+	--mz-line: #262b31;
+	--mz-line-2: #323840;
+	--mz-rail: #0a0c0e;
+	--mz-rail-hover: #171b20;
+	--mz-rail-active: #1c242b;
+
+	--mz-accent: #2fb3a3;
+	--mz-accent-hover: #46c5b5;
+	--mz-accent-fg: #062320;
+	--mz-accent-soft: rgba(47, 179, 163, 0.14);
+	--mz-success: #3ccf8e;
+	--mz-warn: #e0a548;
+	--mz-warn-soft: rgba(224, 165, 72, 0.16);
+	--mz-danger: #f07167;
+	--mz-shadow-pop: 0 12px 32px -8px rgba(0, 0, 0, 0.6);
+}
+:root[data-theme="dark"][data-accent="indigo"] {
+	--mz-accent: #7d9cc0;
+	--mz-accent-hover: #94b0d1;
+	--mz-accent-fg: #0d1520;
+	--mz-accent-soft: rgba(125, 156, 192, 0.16);
+}
+:root[data-theme="dark"][data-accent="plum"] {
+	--mz-accent: #b08ad3;
+	--mz-accent-hover: #c29fe0;
+	--mz-accent-fg: #1a1023;
+	--mz-accent-soft: rgba(176, 138, 211, 0.16);
+}
+:root[data-theme="dark"][data-accent="ochre"] {
+	--mz-accent: #d9a066;
+	--mz-accent-hover: #e6b27e;
+	--mz-accent-fg: #24170a;
+	--mz-accent-soft: rgba(217, 160, 102, 0.16);
+}
+
+/* 正文字体 */
+:root[data-read-font="fangsong"] {
+	--mz-read-font: "FangSong", "仿宋", "STFangsong", serif;
+}
+:root[data-read-font="songti"] {
+	--mz-read-font: "SimSun", "宋体", "Songti SC", serif;
+}
+:root[data-read-font="kaiti"] {
+	--mz-read-font: "KaiTi", "楷体", "STKaiti", serif;
+}
+:root[data-read-font="yahei"] {
+	--mz-read-font: "Microsoft YaHei", "PingFang SC", sans-serif;
+}
+
+/* 正文行宽 */
+:root[data-read-width="narrow"] {
+	--mz-read-width: 640px;
+}
+:root[data-read-width="wide"] {
+	--mz-read-width: 920px;
+}

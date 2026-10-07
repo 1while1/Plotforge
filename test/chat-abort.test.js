@@ -103,6 +103,26 @@ async function readStreamEvents(res) {
   return events;
 }
 
+test('非流式断连中止上游调用并释放写锁', async t => {
+  const { bookId, http, stub } = await setup(t, '非流式断连');
+  stub.responders.push(init => hangingNonStream(init));
+  const clientAc = new AbortController();
+  const pending = fetch(http.baseUrl + '/api/books/' + bookId + '/chat', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content: '缓慢问题' }), signal: clientAc.signal,
+  });
+  await waitUntil(() => stub.calls.length === 1);
+  clientAc.abort();
+  await pending.catch(() => {});
+  await waitUntil(() => db.get("SELECT status FROM agent_runs WHERE entry = 'chat' ORDER BY created_at DESC LIMIT 1")?.status === 'cancelled');
+  assert.equal(stub.calls[0].init.signal.aborted, true);
+  stub.responders.push(() => ({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content: '已经恢复。' }, finish_reason: 'stop' }] }) }));
+  const next = await fetch(http.baseUrl + '/api/books/' + bookId + '/chat', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: '下一条' }),
+  });
+  assert.equal(next.status, 200);
+});
+
 test('M3 断连即停：followUp 悬挂中断开客户端 → 无后续 LLM 调用 + abort 台账 + 不落半截回复', async t => {
   const ctx = await setup(t, 'M3 断连即停');
   const { bookId, http, stub } = ctx;

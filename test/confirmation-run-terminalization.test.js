@@ -1,6 +1,6 @@
 // R1（G6 审计 P2-1 ＝ S6-04 的 D1）：确认卡结算后运行行必须离开 awaiting_confirmation。
 //   契约 01 §3.1：awaiting_confirmation 在 action 结算后标为 paused/action_settled（拒绝为 action_rejected）。
-//   根因（G6-独立审查 §10 独立复现，探针 C:/tmp/moyan-s6/audit2/probe-d1-stranded-run.cjs）：
+//   根因（G6-独立审查 §10 独立复现，探针 系统临时证据目录）：
 //   结算路径只改 chat_actions 的状态，agent_runs 行留在 awaiting_confirmation；
 //   conversations/compression.js 与 conversations/service.js 又无条件把它计为活跃运行 →
 //   受影响会话永久 409 CONVERSATION_ACTIVE_RUN，不能再压缩/归档。

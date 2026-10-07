@@ -12,6 +12,8 @@ const { executeTool, auditRejection } = require('../tools/executor');
 const { toOpenAITools } = require('../tools/adapters/openai');
 const toolRegistry = require('../tools/registry');
 const { toolFact, serializeHistory } = require('../chat/tool-history');
+const { HISTORY_MESSAGE_LIMIT } = require('../context/history-budget');
+const { classifyReplyIntent } = require('../chat/reply-intent');
 const runPolicy = require('../chat/run-policy');
 const { truncateToolResult, toolResultMessage, serializeToolError, toolErrorContent, looksLikeDanglingPromise, looksLikeWriteOutcomeClaim, looksLikeUnfulfilledWriteIntent, looksLikePendingActionAnnouncement, looksLikeSelfTruncationMarker, stripSelfTruncationMarker } = require('../tools/loop-helpers');
 // M2：终局文本护栏（清洗泄漏标记 → 折叠上游重放；自造截断标记检测）——流式/非流式两条管线
@@ -57,8 +59,11 @@ router.get('/:bookId/chat', async (req, res, next) => {
       try {
         const tools = JSON.parse(m.tools_json || '[]');
         m.tools = Array.isArray(tools) ? tools.filter(tool => tool?.kind !== 'run') : [];
-        m.run = Array.isArray(tools) ? tools.find(tool => tool?.kind === 'run')?.state || null : null;
-      } catch { m.tools = []; }
+        const runEntry = Array.isArray(tools) ? tools.find(tool => tool?.kind === 'run') : null;
+        m.run = runEntry?.state || null;
+        // 回复意图（服务器判定；旧记录无该字段 → null，前端退回按回复格式判断）
+        m.intent = runEntry?.intent || null;
+      } catch { m.tools = []; m.intent = null; }
       delete m.tools_json;
       // 契约 5：来源页字段（writing/read/agent/''/system），历史行默认空串
       m.source = m.source || '';
@@ -97,7 +102,7 @@ router.get('/:bookId/context-status', async (req, res, next) => {
     const cwi = contextWindowInfo(llmConfig().model);
     const contextWindow = cwi.effective;
     const ratio = getCompressionRatio();
-    const lastUsage = lastUsageView(bookId);
+    const lastUsage = lastUsageView(bookId, conv.id);
     res.json({
       contextWindow,
       // 钳制透明化：手动设置超过渠道官方报告上限时，前端仪表需说明原因
@@ -108,7 +113,7 @@ router.get('/:bookId/context-status', async (req, res, next) => {
       clamped: cwi.clamped,
       note: cwi.note,
       lastUsage,
-      lastBreakdown: breakdownView(llmCallLog.lastComposition(bookId)),
+      lastBreakdown: breakdownView(llmCallLog.lastCompositionForConversation(conv.id)),
       compressionRatio: ratio,
       autoCompactAt: Math.floor(contextWindow * ratio),
       messages: {
@@ -133,44 +138,34 @@ router.get('/:bookId/context-breakdown', async (req, res, next) => {
     const conversationSvc = require('../conversations/service');
     const conv = conversationSvc.resolveWritingConversation(bookId, req.query.conversationId);
     const chapterId = Number(req.query.chapterId) > 0 ? Number(req.query.chapterId) : null;
-    const { llmConfig, contextWindowInfo, outputTokenBudget, systemPromptTokenBudget } = require('../llm');
-    const context = require('../context');
+    const { llmConfig, contextWindowInfo } = require('../llm');
     const { estimateTokens } = require('../contextBudget');
     const cfg = llmConfig();
     const cwi = contextWindowInfo(cfg.model);
 
     // 系统提示：跑一遍与真实写作相同的组装管道（不调 LLM），取各节占用
     const lastUser = db.get('SELECT content FROM messages WHERE conversation_id = ? AND role = ? ORDER BY id DESC LIMIT 1', [conv.id, 'user']);
-    const assembled = await context.assembleDetailed({
-      book, chapterId, db,
-      query: (lastUser && lastUser.content) || '',
-      systemTokenBudget: systemPromptTokenBudget(),
-    });
+    const assembled = await buildChatMessages(book, (lastUser && lastUser.content) || '', chapterId, HISTORY_MESSAGE_LIMIT, conv.id);
+    const messages = withToolGuide([...assembled.messages]);
 
-    // 对话历史：必须与真实发送口径一致（A-13）。buildChatMessages 每次只发最近 HISTORY_LIMIT 条，
-    // 且较早的长消息截断到 300 字；breakdown 若取全部活跃消息不截断，会严重高估 history。
+    // 对话历史：必须与真实发送口径一致（A-13）。窗口与最近全文条数来自共享预算；
+    // breakdown 若取全部活跃消息不截断，会严重高估 history。
     // 截断文本直接复用 llm.trimHistoryText（唯一口径来源），避免两处各写各的标记后再次漂移。
-    const HISTORY_LIMIT = 12, RECENT_FULL = 4;
-    const rows = db.all(
-      'SELECT role, content FROM messages WHERE conversation_id = ? AND COALESCE(compressed,0) != 1 ORDER BY id DESC LIMIT ?',
-      [conv.id, HISTORY_LIMIT]
-    ).reverse(); // DESC 取最近 N 条后 reverse 成发送顺序（ASC），与 llm.js 一致
     let chatTokens = 0;
     let toolTokens = 0;
-    rows.forEach((r, i) => {
-      const isRecent = i >= rows.length - RECENT_FULL; // 最近 4 条保留全文
-      const content = isRecent ? (r.content || '') : trimHistoryText(r.content || '');
-      const t = estimateTokens(content);
-      if (r.role === 'tool') toolTokens += t; else chatTokens += t;
+    messages.slice(1).forEach(m => {
+      const t = estimateTokens(m.content || '');
+      if (m.role === 'tool') toolTokens += t; else chatTokens += t;
     });
 
     const outputReserve = chatModelOptions(cfg.model).maxOutputTokens;
     const schemaEst = schemaTokens();
-    const systemTotal = assembled.parts.reduce((s, p) => s + p.tokens, 0);
+    const systemTotal = estimateTokens(messages[0]?.content || '');
+    const providerTotal = assembled.parts.reduce((s, p) => s + p.tokens, 0);
     const estimatedPrompt = systemTotal + chatTokens + toolTokens + schemaEst;
     // 最近一次真实请求的落库组成 + 校准系数（官方 usage 总量 ÷ 本地估算总量）：
     // 官方返回只报总量，本地逐层估算乘以系数即得「真实尺度」的分层细分
-    const lb = breakdownView(llmCallLog.lastComposition(bookId));
+    const lb = breakdownView(llmCallLog.lastCompositionForConversation(conv.id));
     // 校准系数护栏（A-06）：factor = 官方 prompt 总量 ÷ 本地四桶估算和。
     // 护栏1 四桶完整：迁移 007 前的旧行没有 schema_tokens 列（默认 0），缺了工具定义这一桶会让
     //   localTotal 偏小、factor 爆表（实测旧行算出 13.59）。主请求恒带 schemaTokens()，故 schema>0
@@ -192,10 +187,11 @@ router.get('/:bookId/context-breakdown', async (req, res, next) => {
       clamped: cwi.clamped,
       note: cwi.note,
       outputReserve,
-      system: { total: systemTotal, budget: assembled.budget, parts: assembled.parts },
-      history: { chatTokens, toolTokens, active: rows.length },
+      system: { total: systemTotal, budget: assembled.budget, parts: assembled.parts, additionalTokens: systemTotal - providerTotal },
+      history: { chatTokens, toolTokens, active: messages.length - 2 },
       schema: schemaEst,
       estimatedPrompt,
+      estimateBasis: '最近一条用户输入模拟下一轮请求',
       free: Math.max(0, cwi.effective - estimatedPrompt - outputReserve),
       lastBreakdown: lb,
       calibration,
@@ -286,7 +282,11 @@ function usageView(row) {
     at: row.created_at,
   };
 }
-function lastUsageView(bookId) { return usageView(llmCallLog.lastWithUsage(bookId)); }
+function lastUsageView(bookId, conversationId = null) {
+  return usageView(conversationId
+    ? llmCallLog.lastWithUsageForConversation(conversationId)
+    : llmCallLog.lastWithUsage(bookId));
+}
 
 // 台账行 → 组成面板视图
 function breakdownView(row) {
@@ -357,7 +357,7 @@ async function readStreamGuarded(res, onEvent, opts) {
 //   后扣零进展预算继续，不再炸穿调用方；__userAbort/signal aborted 必须重抛；
 // ③零进展预算：异常轮不计入 maxCont，只扣 CONTINUATION_ZERO_PROGRESS_MAX（连续超 MAX 才
 //   退出）；200 但内容为空照旧 break（那是模型行为不是网络，不占预算）。
-async function continueNonStream(bookId, convo, cfg, partial, signal = null, maxCont = CONTINUATION_MAX) {
+async function continueNonStream(bookId, convo, cfg, partial, signal = null, maxCont = CONTINUATION_MAX, conversationId = null) {
   let content = partial || '';
   let reasoning = '';
   let usage = null;
@@ -374,7 +374,7 @@ async function continueNonStream(bookId, convo, cfg, partial, signal = null, max
       });
     } catch (e) {
       if ((e && e.__userAbort) || (signal && signal.aborted)) throw e; // 用户取消：原样重抛，不得吞掉
-      llmCallLog.record({ bookId, scope: 'chat-continue', model: cfg.model, baseUrl: cfg.baseUrl, outputReserve: maxOut, status: 'error', error: String((e && e.message) || e).slice(0, 300), durationMs: Date.now() - t0 });
+      llmCallLog.record({ bookId, conversationId, scope: 'chat-continue', model: cfg.model, baseUrl: cfg.baseUrl, outputReserve: maxOut, status: 'error', error: String((e && e.message) || e).slice(0, 300), durationMs: Date.now() - t0 });
       zeroUsed++; // 异常轮不计入 maxCont，只扣零进展预算
       if (zeroUsed > CONTINUATION_ZERO_PROGRESS_MAX) break;
       continue;
@@ -383,7 +383,7 @@ async function continueNonStream(bookId, convo, cfg, partial, signal = null, max
     if (data.usage) usage = data.usage;
     const msg = data.choices?.[0]?.message || {};
     const finishReason = data.choices?.[0]?.finish_reason || '';
-    llmCallLog.record({ bookId, scope: 'chat-continue', model: cfg.model, baseUrl: cfg.baseUrl, ...usageFields(data.usage), outputReserve: maxOut, finishReason, status: 'ok', durationMs: Date.now() - t0 });
+    llmCallLog.record({ bookId, conversationId, scope: 'chat-continue', model: cfg.model, baseUrl: cfg.baseUrl, ...usageFields(data.usage), outputReserve: maxOut, finishReason, status: 'ok', durationMs: Date.now() - t0 });
     const added = msg.content || '';
     if (added) content += added;
     if (msg.reasoning_content) reasoning += (reasoning ? '\n' : '') + msg.reasoning_content;
@@ -400,7 +400,7 @@ async function continueNonStream(bookId, convo, cfg, partial, signal = null, max
 // 零进展轮（本轮 catch 且零新增，或正常结束但零新增且仍截断）不再立刻放弃续写，只扣
 // CONTINUATION_ZERO_PROGRESS_MAX 预算；**连续零进展超过 MAX**、非截断或 signal abort 才退出。
 // 每轮仍先推 recovering 事件；abort 前置检查保证断连后零调用。
-async function streamContinue(bookId, baseUrl, apiKey, model, convo, partial, send, signal = null, maxCont = CONTINUATION_MAX) {
+async function streamContinue(bookId, baseUrl, apiKey, model, convo, partial, send, signal = null, maxCont = CONTINUATION_MAX, conversationId = null) {
   let content = partial || '';
   let lastUsage = null;
   const maxOut = chatModelOptions(model).maxOutputTokens;
@@ -434,10 +434,10 @@ async function streamContinue(bookId, baseUrl, apiKey, model, convo, partial, se
       finishReason = r.finishReason;
       premature = r.premature;
       if (r.usage) { lastUsage = r.usage; roundUsage = r.usage; }
-      llmCallLog.record({ bookId, scope: 'chat-stream-continue', model, baseUrl, ...usageFields(roundUsage), outputReserve: maxOut, finishReason: finishReason || (premature ? 'premature' : ''), status: 'ok', durationMs: Date.now() - t0 });
+      llmCallLog.record({ bookId, conversationId, scope: 'chat-stream-continue', model, baseUrl, ...usageFields(roundUsage), outputReserve: maxOut, finishReason: finishReason || (premature ? 'premature' : ''), status: 'ok', durationMs: Date.now() - t0 });
     } catch (e) {
       premature = true;
-      llmCallLog.record({ bookId, scope: 'chat-stream-continue', model, baseUrl, outputReserve: maxOut, status: 'error', error: String((e && e.message) || e).slice(0, 300), durationMs: Date.now() - t0 });
+      llmCallLog.record({ bookId, conversationId, scope: 'chat-stream-continue', model, baseUrl, outputReserve: maxOut, status: 'error', error: String((e && e.message) || e).slice(0, 300), durationMs: Date.now() - t0 });
     }
     stillTruncated = premature || finishReason === 'length';
     if (added.trim()) {
@@ -663,7 +663,7 @@ async function enforceFreshRead(bookId, convo, cfg, hooks, signal, requiredReads
         const msg = data.choices?.[0]?.message || {};
         const finishReason = data.choices?.[0]?.finish_reason || '';
         llmCallLog.record({
-          bookId, scope: 'chat-readverify-retry', model: cfg.model, baseUrl: cfg.baseUrl,
+          bookId, conversationId: hooks._conversationId, scope: 'chat-readverify-retry', model: cfg.model, baseUrl: cfg.baseUrl,
           ...usageFields(data.usage), outputReserve: maxOut, schemaTokens: schemaTokens(),
           finishReason, status: 'ok', durationMs: Date.now() - t0,
         });
@@ -680,7 +680,7 @@ async function enforceFreshRead(bookId, convo, cfg, hooks, signal, requiredReads
       } catch (error) {
         try {
           llmCallLog.record({
-            bookId, scope: 'chat-readverify-retry', model: cfg.model, baseUrl: cfg.baseUrl,
+            bookId, conversationId: hooks._conversationId, scope: 'chat-readverify-retry', model: cfg.model, baseUrl: cfg.baseUrl,
             status: 'error', error: String((error && error.message) || error).slice(0, 300), durationMs: Date.now() - t0,
           });
         } catch (_) { /* 台账失败不影响主流程 */ }
@@ -756,7 +756,7 @@ async function runFollowUpRounds(bookId, convo, cfg, hooks, maxRounds, signal) {
     const msg = data.choices?.[0]?.message || {};
     const toolCalls = msg.tool_calls || [];
     const finishReason = data.choices?.[0]?.finish_reason || '';
-    llmCallLog.record({ bookId, scope: 'chat-followup', model: cfg.model, baseUrl: cfg.baseUrl, ...usageFields(data.usage), outputReserve: maxOut, schemaTokens: allowTools ? schemaTokens() : 0, finishReason, status: 'ok', durationMs: Date.now() - t0 });
+    llmCallLog.record({ bookId, conversationId: hooks._conversationId, scope: 'chat-followup', model: cfg.model, baseUrl: cfg.baseUrl, ...usageFields(data.usage), outputReserve: maxOut, schemaTokens: allowTools ? schemaTokens() : 0, finishReason, status: 'ok', durationMs: Date.now() - t0 });
     if (msg.content) out.content += (out.content ? '\n' : '') + msg.content;
     if (msg.reasoning_content) out.reasoning += (out.reasoning ? '\n' : '') + msg.reasoning_content;
     // pi 防护：截断轮的 tool_calls 不执行；无工具轮必须直接产出正文
@@ -767,7 +767,7 @@ async function runFollowUpRounds(bookId, convo, cfg, hooks, maxRounds, signal) {
     if (!toolCalls.length || finishReason === 'length') {
       // 写正文轮被 length 截断且已有正文 → 回灌半截无工具续写补齐（最多 CONTINUATION_MAX 次）
       if (finishReason === 'length' && out.content && out.content.trim()) {
-        const cont = await continueNonStream(bookId, convo, cfg, out.content, signal);
+        const cont = await continueNonStream(bookId, convo, cfg, out.content, signal, CONTINUATION_MAX, hooks._conversationId);
         out.content = cont.content;
         if (cont.reasoning) out.reasoning += (out.reasoning ? '\n' : '') + cont.reasoning;
         if (cont.usage) out.usage = cont.usage;
@@ -832,7 +832,7 @@ async function runFollowUpRounds(bookId, convo, cfg, hooks, maxRounds, signal) {
           if (retryData.usage) out.usage = retryData.usage;
           const retryMsg = retryData.choices?.[0]?.message || {};
           llmCallLog.record({
-            bookId, scope: 'chat-followup-retry', model: cfg.model, baseUrl: cfg.baseUrl,
+            bookId, conversationId: hooks._conversationId, scope: 'chat-followup-retry', model: cfg.model, baseUrl: cfg.baseUrl,
             ...usageFields(retryData.usage), outputReserve: maxOut,
             schemaTokens: retryWithTools ? schemaTokens() : 0,
             finishReason: retryData.choices?.[0]?.finish_reason || '', status: 'ok',
@@ -861,7 +861,7 @@ async function runFollowUpRounds(bookId, convo, cfg, hooks, maxRounds, signal) {
         } catch (retryErr) {
           try {
             llmCallLog.record({
-              bookId, scope: 'chat-followup-retry', model: cfg.model, baseUrl: cfg.baseUrl,
+              bookId, conversationId: hooks._conversationId, scope: 'chat-followup-retry', model: cfg.model, baseUrl: cfg.baseUrl,
               outputReserve: maxOut, status: 'error',
               error: String((retryErr && retryErr.message) || retryErr).slice(0, 300),
               durationMs: Date.now() - t1,
@@ -959,7 +959,7 @@ async function runFollowUpRounds(bookId, convo, cfg, hooks, maxRounds, signal) {
         if (cut) {
           try {
             // 续写轮自身的台账由 continueNonStream 记（scope=chat-continue），此处不重复记
-            const cont = await continueNonStream(bookId, convo, cfg, cut, signal);
+            const cont = await continueNonStream(bookId, convo, cfg, cut, signal, CONTINUATION_MAX, hooks._conversationId);
             // 只采纳更完整的产出：续写结果必须比原半截长，且自身结尾不再带截断标记
             if (cont.content && cont.content.length > cut.length && !looksLikeSelfTruncationMarker(cont.content)) {
               out.content = cont.content;
@@ -969,7 +969,7 @@ async function runFollowUpRounds(bookId, convo, cfg, hooks, maxRounds, signal) {
           } catch (contErr) {
             try {
               llmCallLog.record({
-                bookId, scope: 'chat-selftrunc-continue', model: cfg.model, baseUrl: cfg.baseUrl,
+                bookId, conversationId: hooks._conversationId, scope: 'chat-selftrunc-continue', model: cfg.model, baseUrl: cfg.baseUrl,
                 outputReserve: maxOut, status: 'error',
                 error: String((contErr && contErr.message) || contErr).slice(0, 300),
                 durationMs: Date.now() - tSelf,
@@ -1019,6 +1019,17 @@ router.post('/:bookId/chat', async (req, res, next) => {
   let writeScope = null;
   let runId = null;
   let finalizeRunOnce = () => {};
+  const runAbort = new AbortController();
+  let clientGone = false;
+  res.on('close', () => {
+    if (res.writableFinished) return;
+    clientGone = true;
+    runAbort.abort(new Error('client disconnected'));
+    if (runId) {
+      finalizeRunOnce('cancelled', 'client_disconnected');
+      if (writeScope) runSvc.releaseScopes([writeScope], runId);
+    }
+  });
   try {
     const { bookId } = req.params;
     const { content, chapterId, source, conversationId } = req.body || {};
@@ -1084,7 +1095,7 @@ router.post('/:bookId/chat', async (req, res, next) => {
     const userContent = content.trim();
 
     // 先组装消息（此时新消息还未入库，buildChatMessages 会把它拼在末尾）——S3-03 起按会话取历史
-    const { messages, retrieval, parts, writingTarget } = await buildChatMessages(book, userContent, chapterId || null, 12, conv.id);
+    const { messages, retrieval, parts, writingTarget } = await buildChatMessages(book, userContent, chapterId || null, HISTORY_MESSAGE_LIMIT, conv.id);
 
     db.run(
       'INSERT INTO messages (book_id, conversation_id, role, content, source, created_at) VALUES (?, ?, ?, ?, ?, datetime(\'now\',\'localtime\'))',
@@ -1103,6 +1114,7 @@ router.post('/:bookId/chat', async (req, res, next) => {
     const hooks = {
       _runBudget: runPolicy.createBudget({ steps: 1 }),
       _runId: runId,
+      _conversationId: conv.id,
       // S5-02 / R01：本运行的真实读取凭据/失败尝试（共享执行器写入）
       _readReceipts: [],
       _readAttempts: [],
@@ -1122,28 +1134,29 @@ router.post('/:bookId/chat', async (req, res, next) => {
         max_tokens: maxOut,
         temperature: 0.7,
         tools: WRITING_SCHEMAS,
-      });
+      }, { signal: runAbort.signal });
       const data = await res.json();
+      if (runAbort.signal.aborted) return;
       const msg = data.choices?.[0]?.message || {};
       const toolCalls = msg.tool_calls || [];
       const finishReason = data.choices?.[0]?.finish_reason || '';
       lastFinishReason = finishReason;
-      llmCallLog.record({ bookId, scope: 'chat', model: cfg.model, baseUrl: cfg.baseUrl, ...usageFields(data.usage), systemTokens: comp.sysT, historyTokens: comp.histT, toolTokens: comp.toolT, schemaTokens: schemaTokens(), outputReserve: maxOut, finishReason, status: 'ok', durationMs: Date.now() - t0, partsJson: partsJsonOf(parts) });
+      llmCallLog.record({ bookId, conversationId: conv.id, scope: 'chat', model: cfg.model, baseUrl: cfg.baseUrl, ...usageFields(data.usage), systemTokens: comp.sysT, historyTokens: comp.histT, toolTokens: comp.toolT, schemaTokens: schemaTokens(), outputReserve: maxOut, finishReason, status: 'ok', durationMs: Date.now() - t0, partsJson: partsJsonOf(parts) });
 
       // pi 防护：输出被截断（length）时 tool_calls 参数可能残缺，一律不执行
       if (finishReason === 'length') {
         if ((msg.content || '').trim()) {
           // 已有半截正文 → 回灌续写补齐
-          const cont = await continueNonStream(bookId, convo, cfg, msg.content);
+          const cont = await continueNonStream(bookId, convo, cfg, msg.content, runAbort.signal, CONTINUATION_MAX, conv.id);
           result = { content: cont.content, reasoning: cont.reasoning || (msg.reasoning_content || '') };
           if (cont.content && cont.content.length > (msg.content || '').length) lastFinishReason = 'stop';
         } else {
           result = { content: '', reasoning: msg.reasoning_content || '' }; // 全被思考吃掉 → 交下方兜底重生成
         }
       } else if (toolCalls.length) {
-        const settled = await settleToolCalls(bookId, msg.content || '', toolCalls, hooks);
+        const settled = await settleToolCalls(bookId, msg.content || '', toolCalls, hooks, runAbort.signal);
         convo.push(...settled);
-        const follow = await followUpRounds(bookId, convo, cfg, hooks);
+        const follow = await followUpRounds(bookId, convo, cfg, hooks, FOLLOWUP_MAX_ROUNDS, runAbort.signal);
         result = { content: (msg.content ? msg.content + '\n' : '') + follow.content, reasoning: follow.reasoning };
       } else {
         result = { content: msg.content || '', reasoning: msg.reasoning_content || '' };
@@ -1160,7 +1173,7 @@ router.post('/:bookId/chat', async (req, res, next) => {
         if (st.hit && st.cut) {
           const tSt = Date.now();
           try {
-            const cont = await continueNonStream(bookId, convo, cfg, st.cut);
+            const cont = await continueNonStream(bookId, convo, cfg, st.cut, runAbort.signal, CONTINUATION_MAX, conv.id);
             // 只采纳更完整的产出：续写结果必须比原半截长，且自身结尾不再带截断标记
             const again = streamGuards.detectSelfTruncation(cont.content);
             if (cont.content && cont.content.length > st.cut.length && !again.hit) {
@@ -1171,7 +1184,7 @@ router.post('/:bookId/chat', async (req, res, next) => {
           } catch (contErr) {
             try {
               llmCallLog.record({
-                bookId, scope: 'chat-selftrunc-continue', model: cfg.model, baseUrl: cfg.baseUrl,
+                bookId, conversationId: conv.id, scope: 'chat-selftrunc-continue', model: cfg.model, baseUrl: cfg.baseUrl,
                 outputReserve: maxOut, status: 'error',
                 error: String((contErr && contErr.message) || contErr).slice(0, 300),
                 durationMs: Date.now() - tSt,
@@ -1184,7 +1197,7 @@ router.post('/:bookId/chat', async (req, res, next) => {
         // 兜底失败不能毁掉整轮（此前异常直通外层 catch → 502 + 删用户消息）：
         // 保底返回已有产出（可能就是那半截过渡语），失败入台账
         try {
-          const regen = await callLLMFull(convo, { maxTokens: maxOut, temperature: 0.7, meta: { bookId, scope: 'chat-regen' } });
+          const regen = await callLLMFull(convo, { maxTokens: maxOut, temperature: 0.7, signal: runAbort.signal, meta: { bookId, conversationId: conv.id, scope: 'chat-regen' } });
           const regenText = sanitizeLeakedToolMarkup(regen.content).text;
           // 重生成仍悬空时保留原产出，只采纳更完整的答复
           if (regenText && !looksLikeDanglingPromise(regenText)) {
@@ -1194,7 +1207,7 @@ router.post('/:bookId/chat', async (req, res, next) => {
         } catch (regenErr) {
           try {
             llmCallLog.record({
-              bookId, scope: 'chat-regen', model: cfg.model, baseUrl: cfg.baseUrl,
+              bookId, conversationId: conv.id, scope: 'chat-regen', model: cfg.model, baseUrl: cfg.baseUrl,
               outputReserve: maxOut, status: 'error',
               error: String((regenErr && regenErr.message) || regenErr).slice(0, 300),
               durationMs: Date.now() - t0,
@@ -1204,8 +1217,9 @@ router.post('/:bookId/chat', async (req, res, next) => {
       }
     } catch (err) {
       // A16：非流式失败也要落调用台账（此前只流式路径记，catch 直接 502，失败调用无迹可查）
+      if (clientGone || runAbort.signal.aborted) return;
       try {
-        llmCallLog.record({ bookId, scope: 'chat', model: cfg.model, baseUrl: cfg.baseUrl, systemTokens: comp.sysT, historyTokens: comp.histT, toolTokens: comp.toolT, schemaTokens: schemaTokens(), outputReserve: maxOut, status: 'error', error: String((err && err.message) || err).slice(0, 300), durationMs: Date.now() - t0 });
+        llmCallLog.record({ bookId, conversationId: conv.id, scope: 'chat', model: cfg.model, baseUrl: cfg.baseUrl, systemTokens: comp.sysT, historyTokens: comp.histT, toolTokens: comp.toolT, schemaTokens: schemaTokens(), outputReserve: maxOut, status: 'error', error: String((err && err.message) || err).slice(0, 300), durationMs: Date.now() - t0 });
       } catch (_) { /* 台账失败不影响主错误返回 */ }
       // A15：删除本次失败轮插入的用户消息，避免无回复消息污染后续 history 与上下文面板
       try { db.run('DELETE FROM messages WHERE id = ?', [userMsgId]); } catch (_) { /* 忽略 */ }
@@ -1215,10 +1229,14 @@ router.post('/:bookId/chat', async (req, res, next) => {
     }
 
     // S5-02 / R01：明确重读核验（服务器要求 × 本轮真实读取凭据；未满足最多一次有预算纠正）
-    const readGuard = await enforceFreshRead(bookId, convo, cfg, hooks, null, writingTarget && writingTarget.requiredReads);
+    if (clientGone || runAbort.signal.aborted) return;
+    const readGuard = await enforceFreshRead(bookId, convo, cfg, hooks, runAbort.signal, writingTarget && writingTarget.requiredReads);
+    if (runAbort.signal.aborted) return;
     if (readGuard && readGuard.text) result.content = readGuard.text;
 
-    const finalized = runPolicy.finalizeText(result.content, hooks._runState);
+    const finalized = runPolicy.finalizeText(result.content, hooks._runState, {
+      approvedWrites: require('../chat/write-history').approvedWrites(conv.id),
+    });
     result.content = finalized.content;
     hooks._runState = finalized.state;
     // S2-04：终态统一裁决（与流式同一函数）——控制态定格保留，只复核即将判 finished 的事实
@@ -1234,9 +1252,18 @@ router.post('/:bookId/chat', async (req, res, next) => {
         hooks._runState = { ...hooks._runState, status: norm.status, reason: norm.reason };
       }
     }
+    // 回复意图：前端只对 prose 提供「插入章节」（非流式入口无确认续跑语义，resumed 恒 false）
+    const replyIntent = classifyReplyIntent({
+      userText: userContent,
+      resumed: false,
+      facts: hooks._toolFacts,
+      runState: hooks._runState,
+      hasPendingAction: actions.length > 0,
+    });
+    if (runAbort.signal.aborted) return;
     db.run(
       "INSERT INTO messages (book_id, conversation_id, role, content, reasoning, tools_json, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))",
-      [bookId, conv.id, 'assistant', result.content, result.reasoning, serializeHistory(toolEvents, hooks, writingTarget), reqSource]
+      [bookId, conv.id, 'assistant', result.content, result.reasoning, serializeHistory(toolEvents, hooks, writingTarget, { intent: replyIntent }), reqSource]
     );
     for (const a of actions) { try { runSvc.appendRunEvent(runId, { type: 'confirmation_required', payload: { id: a.id, name: a.name } }); } catch (_) {} }
     {
@@ -1245,8 +1272,9 @@ router.post('/:bookId/chat', async (req, res, next) => {
     }
     runSvc.releaseScopes([writeScope], runId);
 
-    res.json({ reply: result.content, reasoning: result.reasoning, retrieval, tools: toolEvents, actions, run: hooks._runState, usage: lastUsageView(bookId) });
+    res.json({ reply: result.content, reasoning: result.reasoning, retrieval, tools: toolEvents, actions, run: hooks._runState, intent: replyIntent, usage: lastUsageView(bookId, conv.id) });
   } catch (err) {
+    if (clientGone || runAbort.signal.aborted) return;
     if (runId) { finalizeRunOnce('failed', 'internal_error'); runSvc.releaseScopes([writeScope], runId); }
     next(err);
   }
@@ -1492,7 +1520,7 @@ router.post('/:bookId/chat/stream', async (req, res) => {
     const confirmedChapter = resumeAction?.status === 'approved'
       ? resumeAction.result?.chapter?.id || resumeAction.args?.chapterId || resumeAction.args?.chapter_id : null;
     const resumeChapter = confirmedChapter && db.get('SELECT id FROM chapters WHERE id = ? AND book_id = ?', [confirmedChapter, bookId]);
-    const { messages, retrieval, parts, writingTarget } = await buildChatMessages(book, userContent, resumeChapter?.id || chapterId || null, 12, conv.id);
+    const { messages, retrieval, parts, writingTarget } = await buildChatMessages(book, userContent, resumeChapter?.id || chapterId || null, HISTORY_MESSAGE_LIMIT, conv.id);
     userMsgId = db.run(
       // 契约 5：用户消息写来源页 source（续跑信封写来源页 source，无则 'system'）
       'INSERT INTO messages (book_id, conversation_id, role, content, source, created_at) VALUES (?, ?, ?, ?, ?, datetime(\'now\',\'localtime\'))',
@@ -1514,6 +1542,7 @@ router.post('/:bookId/chat/stream', async (req, res) => {
       _settledAction: resumeAction,
       _runBudget: runPolicy.createBudget({ steps: 1 }),
       _runId: runId,
+      _conversationId: conv.id,
       // S5-02 / R01：本运行的真实读取凭据/失败尝试（共享执行器写入，模型自报不产生凭据）
       _readReceipts: [],
       _readAttempts: [],
@@ -1588,7 +1617,7 @@ router.post('/:bookId/chat/stream', async (req, res) => {
       }
       // 首轮调用落库（含本次请求组成估算）：每次尝试各一行；后续轮/续写/兜底各自单独成行
       llmCallLog.record({
-        bookId, scope: 'chat-stream', model, baseUrl,
+        bookId, conversationId: conv.id, scope: 'chat-stream', model, baseUrl,
         ...usageFields(streamUsage),
         systemTokens: comp.sysT, historyTokens: comp.histT, toolTokens: comp.toolT, schemaTokens: schemaTokens(), outputReserve: maxOut,
         finishReason: finishReason || (firstPremature ? 'premature' : ''),
@@ -1644,7 +1673,7 @@ router.post('/:bookId/chat/stream', async (req, res) => {
       const truncated = (finishReason === 'length') || firstPremature;
       if (truncated && hasPartial) {
         // 已有半截正文 → 无工具流式续写（前端继续追加 content 事件，无缝）
-        const contRes = await streamContinue(bookId, baseUrl, apiKey, model, convo, fullContent, send, runAbort.signal);
+        const contRes = await streamContinue(bookId, baseUrl, apiKey, model, convo, fullContent, send, runAbort.signal, CONTINUATION_MAX, conv.id);
         fullContent = contRes.content;
         // S2-04：续写补齐 → 按 stop 收尾；补不齐 → 保留 length（normalizeFinish 落 paused/output_truncated）
         finishReason = contRes.stillTruncated ? 'length' : 'stop';
@@ -1670,16 +1699,16 @@ router.post('/:bookId/chat/stream', async (req, res) => {
             }
           }, { stallMs: STREAM_STALL_TIMEOUT_MS, signal: runAbort.signal });
           if (r.usage) streamUsage = r.usage;
-          llmCallLog.record({ bookId, scope: 'chat-stream-fallback', model, baseUrl, ...usageFields(r.usage), outputReserve: maxOut, finishReason: r.finishReason || (r.premature ? 'premature' : ''), status: 'ok', durationMs: Date.now() - tFb });
+          llmCallLog.record({ bookId, conversationId: conv.id, scope: 'chat-stream-fallback', model, baseUrl, ...usageFields(r.usage), outputReserve: maxOut, finishReason: r.finishReason || (r.premature ? 'premature' : ''), status: 'ok', durationMs: Date.now() - tFb });
           // 兜底自身也可能 length/提前结束 → 再续传
           if ((r.premature || r.finishReason === 'length') && fullContent.trim()) {
-            const contRes2 = await streamContinue(bookId, baseUrl, apiKey, model, convo, fullContent, send, runAbort.signal);
+            const contRes2 = await streamContinue(bookId, baseUrl, apiKey, model, convo, fullContent, send, runAbort.signal, CONTINUATION_MAX, conv.id);
             fullContent = contRes2.content;
             finishReason = contRes2.stillTruncated ? 'length' : 'stop';
             if (contRes2.usage) streamUsage = contRes2.usage;
           }
         } catch (err2) {
-          llmCallLog.record({ bookId, scope: 'chat-stream-fallback', model, baseUrl, status: 'error', error: String((err2 && err2.message) || err2).slice(0, 300), durationMs: Date.now() - tFb });
+          llmCallLog.record({ bookId, conversationId: conv.id, scope: 'chat-stream-fallback', model, baseUrl, status: 'error', error: String((err2 && err2.message) || err2).slice(0, 300), durationMs: Date.now() - tFb });
           send({ type: 'error', error: err2.message || 'LLM 请求失败' });
           rollbackUserMessage(); // M2：整轮失败（首轮+兜底都失败）→ 回滚用户消息
           finalizeRunOnce('failed', 'llm_error'); // S2-01：显式落失败终态（不等 close 兜底误判成断连取消）
@@ -1703,7 +1732,7 @@ router.post('/:bookId/chat/stream', async (req, res) => {
     {
       const st = streamGuards.detectSelfTruncation(fullContent);
       if (st.hit && st.cut && !clientGone) {
-        const contRes = await streamContinue(bookId, baseUrl, apiKey, model, convo, st.cut, send, runAbort.signal);
+        const contRes = await streamContinue(bookId, baseUrl, apiKey, model, convo, st.cut, send, runAbort.signal, CONTINUATION_MAX, conv.id);
         // 只采纳更完整的产出，且续写结果自身结尾不得再带截断标记（否则等于没补）
         const again = streamGuards.detectSelfTruncation(contRes.content);
         if (contRes.content && contRes.content.length > st.cut.length && !again.hit) {
@@ -1715,7 +1744,7 @@ router.post('/:bookId/chat/stream', async (req, res) => {
     }
     if ((!fullContent || looksLikeDanglingPromise(fullContent)) && !actionCount && !clientGone) {
       try {
-        const regen = await callLLMFull(convo, { maxTokens: maxOut, temperature: 0.7, signal: runAbort.signal, meta: { bookId, scope: 'chat-regen' } });
+        const regen = await callLLMFull(convo, { maxTokens: maxOut, temperature: 0.7, signal: runAbort.signal, meta: { bookId, conversationId: conv.id, scope: 'chat-regen' } });
         const regenText = sanitizeLeakedToolMarkup(regen.content).text;
         // 重生成仍悬空时保留原产出（有过渡语也好过空白），只采纳更完整的答复
         if (regenText && !looksLikeDanglingPromise(regenText)) {
@@ -1732,7 +1761,7 @@ router.post('/:bookId/chat/stream', async (req, res) => {
       : await enforceFreshRead(book.id, convo, { baseUrl, apiKey, model }, hooks, runAbort.signal, writingTarget && writingTarget.requiredReads);
     if (readGuard && readGuard.text) fullContent = readGuard.text;
 
-    const finalized = runPolicy.finalizeText(fullContent, hooks._runState, { settledAction: resumeAction, verifiedWrite: resumeAction?.status === 'approved' && ['append_chapter', 'replace_chapter'].includes(resumeAction.name) });
+    const finalized = runPolicy.finalizeText(fullContent, hooks._runState, { settledAction: resumeAction, verifiedWrite: resumeAction?.status === 'approved' && ['append_chapter', 'replace_chapter'].includes(resumeAction.name), approvedWrites: require('../chat/write-history').approvedWrites(conv.id) });
     fullContent = finalized.content;
     hooks._runState = finalized.state;
     // S2-04：终态统一裁决——控制态定格（待确认/暂停/失败/取消）原样保留，只复核
@@ -1750,10 +1779,18 @@ router.post('/:bookId/chat/stream', async (req, res) => {
         hooks._runState = { ...hooks._runState, status: norm.status, reason: norm.reason };
       }
     }
+    // 回复意图：在终态裁决之后判定（runState 已定格）；空正文跳过落库时 done 仍带 intent
+    const replyIntent = classifyReplyIntent({
+      userText: userContent,
+      resumed: !!resumeAction,
+      facts: hooks._toolFacts,
+      runState: hooks._runState,
+      hasPendingAction: actionCount > 0,
+    });
     if (fullContent && !clientGone) {
       db.run(
         "INSERT INTO messages (book_id, conversation_id, role, content, reasoning, tools_json, source, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))",
-        [bookId, conv.id, 'assistant', fullContent, fullReasoning, serializeHistory(toolEvents, hooks, writingTarget), reqSource]
+        [bookId, conv.id, 'assistant', fullContent, fullReasoning, serializeHistory(toolEvents, hooks, writingTarget, { intent: replyIntent }), reqSource]
       );
       assistantSaved = true; // M2：回复已落库，此后失败不再回滚用户消息
       // 确认续跑完成（回复已入库）→ 标记一次性，防重复续跑（3.1 落库版走显式更新）
@@ -1761,7 +1798,7 @@ router.post('/:bookId/chat/stream', async (req, res) => {
     }
     // ---- 自动压缩：真实占用达到 窗口×压缩率 时触发（压缩到阈值以下，事件先于 done 推送） ----
     // 组成估算与 usage 已随调用落库（llm_calls），此处直接读库
-    const usageNow = lastUsageView(bookId);
+    const usageNow = lastUsageView(bookId, conv.id);
     if (!clientGone && usageNow && usageNow.prompt_tokens > 0) {
       const { resolveContextWindow } = require('../llm');
       const win = resolveContextWindow(model);
@@ -1779,7 +1816,7 @@ router.post('/:bookId/chat/stream', async (req, res) => {
       }
     }
 
-    if (!clientGone) send({ type: 'done', content: fullContent, reasoning: fullReasoning, run: hooks._runState, usage: lastUsageView(bookId) });
+    if (!clientGone) send({ type: 'done', content: fullContent, reasoning: fullReasoning, run: hooks._runState, intent: replyIntent, usage: lastUsageView(bookId, conv.id) });
     {
       // S2-01：终态映射——run-policy 的状态即运行终态（awaiting_confirmation 表示
       // 停在待确认，action 结算后的续跑是关联它的新运行，本运行不再改写）
@@ -1946,7 +1983,14 @@ router.delete('/:bookId/chat', async (req, res, next) => {
   try {
     const { bookId } = req.params;
     const conv = require('../conversations/service').resolveWritingConversation(bookId, req.query.conversationId);
-    db.run('DELETE FROM messages WHERE conversation_id = ?', [conv.id]);
+    const activeRun = require('../runtime/run-service').findActiveRun(conv.id);
+    if (activeRun) {
+      return res.status(409).json({ error: { code: 'CONVERSATION_ACTIVE_RUN', message: '会话存在活跃运行，清空须等运行结束' } });
+    }
+    db.transaction(() => {
+      db.run('DELETE FROM messages WHERE conversation_id = ?', [conv.id]);
+      db.run("UPDATE conversation_summaries SET status = 'superseded' WHERE conversation_id = ? AND status = 'active'", [conv.id]);
+    });
     res.json({ ok: true, conversationId: conv.id });
   } catch (err) {
     next(err);

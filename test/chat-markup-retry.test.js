@@ -847,6 +847,16 @@ test('looksLikeSelfTruncationMarker：识别结尾自造截断标记，不误伤
   assert.equal(looksLikeSelfTruncationMarker(''), false);
 });
 
+test('机器历史省略标记是输入注记，不触发回答续写', () => {
+  const { trimHistoryText, HISTORY_OLD_MAX_CHARS } = require('../server/llm');
+  const clipped = trimHistoryText('甲'.repeat(HISTORY_OLD_MAX_CHARS + 20));
+  assert.ok(clipped.endsWith('[... 前文另有 20 字已省略]'));
+  assert.equal(looksLikeSelfTruncationMarker(clipped), false);
+  assert.equal(looksLikeSelfTruncationMarker('作者引用了「[... 前文另有 20 字已省略]」'), false);
+  assert.equal(looksLikeSelfTruncationMarker('这一段先（较晚内容略）再写下一段。'), false);
+  assert.equal(stripSelfTruncationMarker(clipped), clipped);
+});
+
 test('stripSelfTruncationMarker：摘掉结尾标记，保留正文（续写回灌用）', () => {
   assert.equal(stripSelfTruncationMarker('她发动汽车，然后……（较晚内容略）'), '她发动汽车，然后……');
   assert.equal(stripSelfTruncationMarker('正文完整，没有标记。'), '正文完整，没有标记。');

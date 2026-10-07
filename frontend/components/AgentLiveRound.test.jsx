@@ -110,8 +110,9 @@ describe("T6 AgentLiveRound（实时轮次）", () => {
 		const blocks = container.querySelectorAll("details.tool-call");
 		expect(blocks.length).toBe(2);
 		const first = blocks[0];
+		// 阶段 4c：助手页对用户隐藏内部工具名，经 agentToolLabel 映射为中文标签
 		expect(first.querySelector(".tool-call-name").textContent).toBe(
-			"调用工具 · list_chapters",
+			"调用工具 · 列出章节",
 		);
 		expect(first.querySelector(".tool-call-status").textContent).toBe(
 			"执行中…",

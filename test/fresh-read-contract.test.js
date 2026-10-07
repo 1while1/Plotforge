@@ -97,6 +97,11 @@ async function readOnceInPreviousTurn(t, fx) {
   assert.ok(done.content.includes('白塔落雪'), '上一轮应读出旧标记：' + done.content);
   const receipt = (done.run && done.run.readReceipts || []).find(item => item.chapterId === fx.latestId);
   assert.ok(receipt, '上一轮读取应产生读取凭据（readReceipts）');
+  const run = db.get("SELECT id FROM agent_runs WHERE entry = 'chat' ORDER BY created_at DESC, id DESC LIMIT 1");
+  assert.ok(run, '真实写作入口应关联运行');
+  const stored = db.get('SELECT chapter_id, revision, content_hash FROM run_read_evidence WHERE run_id = ? AND chapter_id = ?', [run.id, fx.latestId]);
+  assert.equal(stored?.revision, receipt.revision, '读取凭据应随运行持久化');
+  assert.equal(stored?.content_hash, receipt.contentHash);
   return { events, done, receipt, calls: fx.stub.calls.length };
 }
 
@@ -430,4 +435,25 @@ test('R01 Agent 入口：服务端真实只读预备步骤产生凭据，同一�
   const modelContext = JSON.stringify(fx.stub.calls[0].body.messages);
   assert.ok(modelContext.includes(NEW_SENTINEL), '模型上下文必须含本轮真实读取到的新正文');
   assert.ok(!modelContext.includes(OLD_SENTINEL), '不得把旧正文当作本轮读取结果注入');
+});
+
+test('R01 Agent HTTP 入口：预备读取证据绑定运行并可按会话回读', async t => {
+  const fx = await setup(t);
+  const conv = require('../server/conversations/service').createConversation({ kind: 'agent', scope: 'book', bookId: fx.bookId });
+  fx.stub.responders.push(() => agentSse('已读取并完成回答。'));
+  const response = await fetch(fx.http.baseUrl + '/api/agent/chat', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ conversation_id: conv.id, book_id: fx.bookId, chapterId: fx.latestId,
+      content: '请重新实际读取最新章正文，然后回答它末尾的口令。' }),
+  });
+  assert.equal(response.status, 200);
+  await response.text();
+  const run = db.get('SELECT id FROM agent_runs WHERE conversation_id = ? ORDER BY created_at DESC, id DESC LIMIT 1', [conv.id]);
+  assert.ok(run);
+  const receipt = db.get('SELECT chapter_id, content_hash FROM run_read_evidence WHERE run_id = ?', [run.id]);
+  assert.equal(receipt?.chapter_id, fx.latestId);
+  assert.equal(receipt?.content_hash.length, 64);
+  const visible = await fetch(fx.http.baseUrl + '/api/runs/' + run.id + '/read-evidence', { headers: { 'x-session-key': 'agent:' + conv.id } });
+  assert.equal(visible.status, 200);
+  assert.equal((await visible.json()).evidence.length, 1);
 });

@@ -8,6 +8,8 @@ const db = require('../db');
 const { callLLMFull } = require('../llm');
 const svc = require('./service');
 const runSvc = require('../runtime/run-service');
+const SUMMARY_INPUT_MAX_CHARS = 12000;
+const SUMMARY_NEW_TRANSCRIPT_MIN_CHARS = 100;
 
 // 压缩转录纯函数与压缩率（自 routes/chat.js 上收，全仓唯一实现；chat.js 反向引用，
 // 避免「压缩估算与实际发送两份口径」——A-13 原则在压缩链的延续）。
@@ -55,7 +57,10 @@ function keepBoundary(active, targetTokens) {
     if (acc > targetTokens) break;
     keepCount++;
   }
-  return keepCount;
+  // 极小预算也必须保住最新请求；最后若是 assistant，连同前面的 user 一起保留。
+  const lastUser = active.findLastIndex(row => row.role === 'user');
+  if (lastUser >= 0) keepCount = Math.max(keepCount, active.length - lastUser);
+  return Math.max(1, keepCount);
 }
 
 async function compressConversation({ conversationId, expectedLastMessageId, targetTokens, signal = null, excludeRunId = null }) {
@@ -92,23 +97,48 @@ async function compressConversation({ conversationId, expectedLastMessageId, tar
   }
 
   // 摘要生成失败时直接抛出——此时尚无任何行变更（旧上下文与完整历史原样保留）
-  const transcript = buildCompressTranscript(toCompress);
+  const activeSummaries = db.all(
+    "SELECT id, content FROM conversation_summaries WHERE conversation_id = ? AND status = 'active' ORDER BY id ASC",
+    [conversationId]
+  );
+  const previous = activeSummaries.map((row, i) => '【前版存档摘要 ' + (i + 1) + '】\n' + row.content).join('\n\n');
+  const transcriptHeading = previous ? '\n\n【本次待归档对话】\n' : '';
+  const nextBudget = SUMMARY_INPUT_MAX_CHARS - previous.length - transcriptHeading.length;
+  if (nextBudget < SUMMARY_NEW_TRANSCRIPT_MIN_CHARS) {
+    throw fail(409, 'SUMMARY_INPUT_TOO_LARGE', '现有存档摘要已用尽压缩输入预算，未改动历史');
+  }
+  const nextTranscript = buildCompressTranscript(toCompress, { total: nextBudget });
+  const sourceText = previous + transcriptHeading + nextTranscript;
+  if (sourceText.length > SUMMARY_INPUT_MAX_CHARS || !nextTranscript) {
+    throw fail(409, 'SUMMARY_INPUT_TOO_LARGE', '现有存档摘要与新增对话超出压缩输入预算，未改动历史');
+  }
   const summary = await callLLMFull([
     { role: 'system', content: SUMMARY_SYSTEM },
-    { role: 'user', content: transcript },
+    { role: 'user', content: sourceText },
   ], { maxTokens: 1200, temperature: 0.3, signal, meta: { bookId: conv.book_id, scope: 'conversation-compact' } });
 
   const coveredIds = toCompress.map(m => m.id);
   const crypto = require('crypto');
   const fingerprint = crypto.createHash('sha256')
-    .update(JSON.stringify({ conversationId, coveredIds, transcriptLength: transcript.length }))
+    .update(JSON.stringify({ conversationId, coveredIds, transcriptLength: sourceText.length, previousSummaryIds: activeSummaries.map(row => row.id) }))
     .digest('hex');
-  const usageEstimate = Math.ceil(transcript.length / 4);
+  const usageEstimate = Math.ceil(sourceText.length / 4);
 
   // 落库单事务（A12 原则：归档标记、存档行、摘要记录同生同死，不留半更新）
   const ids = coveredIds;
   const placeholders = ids.map(() => '?').join(',');
   const summaryId = db.transaction(() => {
+    const currentLast = db.get('SELECT MAX(id) AS id FROM messages WHERE conversation_id = ? AND COALESCE(compressed,0) != 1', [conversationId]);
+    const currentSummaries = db.all("SELECT id, content FROM conversation_summaries WHERE conversation_id = ? AND status = 'active' ORDER BY id ASC", [conversationId]);
+    if (currentLast?.id !== active[active.length - 1].id
+      || JSON.stringify(currentSummaries) !== JSON.stringify(activeSummaries)
+      || runSvc.findActiveRun(conversationId, { excludeRunId })) {
+      throw fail(409, 'SOURCE_CHANGED', '会话在摘要生成期间发生变化，请重试压缩');
+    }
+    if (activeSummaries.length) {
+      const oldIds = activeSummaries.map(row => row.id);
+      db.run("UPDATE conversation_summaries SET status = 'superseded' WHERE conversation_id = ? AND id IN (" + oldIds.map(() => '?').join(',') + ")", [conversationId, ...oldIds]);
+    }
     db.run(`UPDATE messages SET compressed = 1 WHERE conversation_id = ? AND id IN (${placeholders})`,
       [conversationId, ...ids]);
     db.run(
@@ -129,6 +159,9 @@ async function compressConversation({ conversationId, expectedLastMessageId, tar
 function restoreConversation(conversationId) {
   const conv = svc.getConversation(conversationId);
   if (!conv) throw fail(404, 'CONVERSATION_NOT_FOUND', '会话不存在');
+  if (runSvc.findActiveRun(conversationId)) {
+    throw fail(409, 'CONVERSATION_ACTIVE_RUN', '会话存在活跃运行，还原须等运行结束');
+  }
   const archived = db.get('SELECT COUNT(*) AS n FROM messages WHERE conversation_id = ? AND compressed = 1', [conversationId]);
   db.transaction(() => {
     db.run('DELETE FROM messages WHERE conversation_id = ? AND compressed = 2', [conversationId]);

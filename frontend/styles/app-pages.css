@@ -1,0 +1,35 @@
+/* UI 优化阶段 4：书外页面（书架/设置/个人中心/AI 助手/专项工作台/时间线/作家卡/文风实验室/阅读精修）的换装。
+   本文件在 base.css（原 public/style.css）之后导入，同特异度时以这里为准。
+   颜色一律取 tokens.css 的 --mz-*，亮/暗主题与主色切换自动生效。
+   pages/*.css 是阶段 4 从 public/style.css 原样迁出的页面专属样式（搬迁时逐页实测计算样式零变化），
+   换装直接改这些文件，不再回写 base.css。 */
+/* 导入顺序即级联顺序，对齐旧 style.css 的段序，换位会引发同特异度规则翻转 */
+@import "./pages/shelf.css";
+@import "./pages/workbench.css";
+@import "./pages/forms.css";
+@import "./pages/agent.css";
+@import "./pages/read.css";
+@import "./pages/stylelab.css";
+@import "./pages/cards.css";
+@import "./pages/profile.css";
+
+/* ---------- 全局导航栏（frontend/shell/AppRail.jsx） ---------- */
+.app-rail {
+	position: fixed;
+	top: 0;
+	bottom: 0;
+	left: 0;
+	z-index: 60;
+	width: 60px;
+}
+body.has-app-rail {
+	padding-left: 60px;
+}
+@media (max-width: 760px) {
+	.app-rail {
+		width: 52px;
+	}
+	body.has-app-rail {
+		padding-left: 52px;
+	}
+}

@@ -2,7 +2,7 @@
 // S6-01 长跑驱动：故障矩阵十组 × 每组十次 = 100 轮确定性闭环（不进默认 npm test）。
 //
 // 用法：node tools/system-acceptance.cjs [选项]
-//   --evidence-dir=<dir>   证据目录（默认 C:/tmp/moyan-s6/s601-acceptance）
+//   --evidence-dir=<dir>   证据目录（默认 系统临时证据目录）
 //   --groups=1-10          只跑指定组（默认 1-10）
 //   --seeds=10             每组轮数（默认 10，即 100 轮）
 //   --port=3166            第 10 组隔离进程起始端口（占用则顺延，记录实测端口）
@@ -19,7 +19,7 @@ const path = require('node:path');
 const H = require('../test/helpers/system-harness');
 
 function parseArgs(argv) {
-  const opts = { evidenceDir: 'C:/tmp/moyan-s6/s601-acceptance', groups: null, seeds: 10, port: 3166 };
+  const opts = { evidenceDir: path.join(require('node:os').tmpdir(), 'plotforge-system-acceptance'), groups: null, seeds: 10, port: 3166 };
   for (const raw of argv.slice(2)) {
     const [key, value] = raw.replace(/^--/, '').split('=');
     if (key === 'evidence-dir' && value) opts.evidenceDir = value;

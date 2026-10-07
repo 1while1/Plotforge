@@ -1,0 +1,268 @@
+/* 表单与设置页卡片（设置/作家卡/错题库页共用容器，.field 表单原语全站弹窗共用）。
+   UI 优化阶段 4 从 public/style.css 原样迁入；级联次序：必须在 workbench.css 之后、cards.css 之前加载。 */
+
+/* ================= 设置页 ================= */
+.settings-main {
+	max-width: 720px;
+	width: 100%;
+	margin: 0 auto;
+	padding: 32px 24px 64px;
+	display: flex;
+	flex-direction: column;
+	gap: 24px;
+}
+.settings-card {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 24px;
+	box-shadow: var(--shadow);
+}
+.settings-card h3 {
+	font-family: var(--serif);
+	font-size: 16px;
+	font-weight: 600;
+	margin-bottom: 16px;
+	padding-bottom: 10px;
+	border-bottom: 1px solid var(--border);
+}
+.field {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin-bottom: 14px;
+}
+.field span {
+	font-size: 12px;
+	color: var(--muted);
+}
+/* 复选框行：横向排列，勾选框不占满整行宽度 */
+.field-inline {
+	flex-direction: row;
+	align-items: center;
+	gap: 8px;
+}
+.field-inline input[type="checkbox"] {
+	width: auto;
+	flex: none;
+}
+.field input,
+.field select,
+.settings-card textarea {
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 8px 12px;
+	font-family: var(--sans);
+	font-size: 13px;
+	background: var(--surface);
+	color: var(--ink);
+	outline: none;
+	width: 100%;
+}
+.field input:focus,
+.field select:focus,
+.settings-card textarea:focus {
+	border-color: var(--accent);
+	box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.field small {
+	color: var(--muted);
+	font-weight: normal;
+}
+.settings-card textarea {
+	resize: vertical;
+	line-height: 1.8;
+}
+.field-hint {
+	font-size: 12px;
+	color: var(--muted);
+	margin-bottom: 10px;
+}
+.settings-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-top: 8px;
+}
+.test-result {
+	font-size: 12px;
+}
+.test-result.ok {
+	color: var(--accent);
+}
+.test-result.fail {
+	color: var(--danger);
+}
+
+/* ============ 模型接口 · BYOK 服务商（components/ModelProfilesPanel.jsx） ============ */
+.model-profiles {
+	margin-bottom: 14px;
+}
+.mp-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 12px;
+	margin-bottom: 10px;
+}
+.mp-head-text {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+.mp-label {
+	font-size: 12px;
+	color: var(--muted);
+}
+.mp-hint {
+	font-size: 12px;
+	color: var(--muted);
+}
+.mp-list {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+.mp-item {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 10px 12px;
+}
+.mp-item.active {
+	border-color: var(--accent);
+}
+.mp-item-head {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 8px;
+}
+.mp-name {
+	color: var(--ink);
+	font-size: 13px;
+}
+.mp-badge {
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	color: var(--muted);
+	font-size: 11px;
+	line-height: 18px;
+	padding: 0 8px;
+}
+.mp-badge-on {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+.mp-actions {
+	display: flex;
+	gap: 4px;
+	margin-left: auto;
+}
+.mp-meta {
+	color: var(--muted);
+	font-size: 12px;
+	margin-top: 4px;
+	word-break: break-all;
+}
+.mp-chips {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-top: 8px;
+}
+.mp-add-model {
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 999px;
+	color: var(--ink);
+	font-family: var(--sans);
+	font-size: 12px;
+	outline: none;
+	padding: 3px 10px;
+	width: 120px;
+}
+.mp-add-model:focus {
+	border-color: var(--accent);
+	box-shadow: 0 0 0 3px var(--accent-soft);
+}
+/* 模型名与它的删除钮同在一枚胶囊里，换行时不会把 × 甩到下一行 */
+.mp-chip-group {
+	display: inline-flex;
+	align-items: center;
+	background: var(--surface);
+	border: 1px solid var(--border);
+	border-radius: 999px;
+}
+.mp-chip-group.on {
+	border-color: var(--accent);
+}
+.mp-chip,
+.mp-chip-x {
+	background: none;
+	border: 0;
+	border-radius: 999px;
+	color: var(--ink-soft);
+	cursor: pointer;
+	font-family: var(--sans);
+	font-size: 12px;
+	padding: 3px 10px;
+}
+.mp-chip.on {
+	color: var(--accent);
+}
+.mp-chip-group:has(.mp-chip-x) .mp-chip {
+	padding-right: 2px;
+}
+.mp-chip:disabled,
+.mp-chip-x:disabled {
+	cursor: not-allowed;
+	opacity: 0.5;
+}
+.mp-chip-x {
+	display: inline-flex;
+	align-items: center;
+	color: var(--muted);
+	padding: 3px 8px 3px 4px;
+}
+.mp-chip-x:hover {
+	color: var(--danger);
+}
+.mp-chip-x svg {
+	width: 12px;
+	height: 12px;
+}
+.mp-form {
+	display: flex;
+	flex-direction: column;
+	margin-top: 10px;
+}
+.mp-form-actions {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin-top: 4px;
+}
+
+.modal .field input,
+.modal .field textarea {
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 8px 12px;
+	font-family: var(--sans);
+	font-size: 13px;
+	background: var(--paper);
+	color: var(--ink);
+	outline: none;
+	width: 100%;
+	resize: vertical;
+}
+.modal .field input:focus,
+.modal .field textarea:focus {
+	border-color: var(--accent);
+	box-shadow: 0 0 0 3px var(--accent-soft);
+}

@@ -7,6 +7,8 @@
 // - :1736-1743 确认请求体（有会话→conversation_id；否则→session_id）
 // - :1719-1789 结算分派（成功族三态；409 SUPERSEDED／404 或 NOT_FOUND／409 REQUIRES_REVIEW／其余 fail）
 // 纪律：零 DOM、零 fetch、零全局写入；文案逐字（含标点与空格），安全输出由调用方以文本节点承接。
+import { agentToolLabel } from "./agent-tool-labels.js";
+
 export const ACTION_STATUS_META = {
 	pending: { text: "", readonly: false },
 	executing: { text: "执行中…", readonly: true },
@@ -122,7 +124,7 @@ export function confirmCardModel(input) {
 		key: key,
 		readonly: !!meta.readonly,
 		statusText: meta.text,
-		head: `AI 请求写操作：${conf.summary || i.toolName || conf.tool || ""}`,
+		head: `AI 请求写操作：${conf.summary || agentToolLabel(i.toolName || conf.tool)}`,
 		argsText: confirmArgsText(i.args),
 		impactText: conf.impact?.length
 			? `影响能力：${conf.impact.join("、")}`

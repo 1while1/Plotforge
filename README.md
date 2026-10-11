@@ -1,77 +1,79 @@
 # Plotforge
 
+**[English](README.md)** · [简体中文](README.zh-CN.md)
+
 [![CI](https://github.com/1while1/Plotforge/actions/workflows/ci.yml/badge.svg)](https://github.com/1while1/Plotforge/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/1while1/Plotforge)](https://github.com/1while1/Plotforge/releases/latest)
 [![License](https://img.shields.io/github/license/1while1/Plotforge)](LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-24-417e38)](https://nodejs.org/)
 
-本地优先的 AI 小说创作工坊（墨砚）。一个跑在本机 Node.js 上的长篇小说写作环境：书籍、卷、章节三级结构，接入任意 OpenAI 兼容接口即可开始写作，所有数据保存在本地 SQLite 文件中。
+A local-first AI writing studio for long-form creators. Plotforge runs on your own machine with Node.js, organizes stories into books, volumes and chapters, and connects to OpenAI-compatible model providers. Story data is stored in a local SQLite file.
 
-## 功能
+## Features
 
-- **写作工作台**：章节栏、正文编辑区与 AI 面板协作，专注模式保留正文与底部 AI 输入栏，窄屏侧栏可通过抽屉打开
-- **外观与快捷操作**：亮色 / 暗色 / 跟随系统主题，主色、正文字体与行宽可调整；`Ctrl+K` 快速跳转，支持保存、切章、定稿与专注模式快捷键
-- **写作页流式对话**：按书互斥的聊天流闸门、断连即停、断点恢复，写作状态常显；回复按服务端意图区分正文与讨论，正文插入后自动保存，对话贴底跟随
-- **大纲工作台**：章节时间轴、节拍（beat）编辑与拖拽排序、节奏热力条、缺口补章建议、AI 节奏评语、卷总结
-- **参谋台（Agent）**：只读讨论模式与写作执行模式分离，工具面按场景白名单加载
-- **人物 / 世界观 / 事件账本**：AI 只提案，人工采纳后才写入台账，带乐观锁与审计
-- **上下文管理**：多 Provider 上下文预算管道、四节式会话压缩、连续压缩继承摘要、来源快照过期检测，按会话查看调用用量与上下文组成
-- **BYOK 服务商与模型管理**：添加服务商、编辑密钥与模型列表、切换活动模型；密钥保存在本机服务端数据库，配置接口只返回掩码
-- **本地向量检索（RAG）**：章节正文自动切块建向量索引，Embedding 由本地模型完成（`@huggingface/transformers`，不出本机），同书余弦 top-k 检索供上下文管道、证据搜索与 LLM 工具调用
-- **风格仓库**：作家卡（人设 + 指纹 + 规则 + 范文）管理与体检
-- **本地持久化**：sql.js（SQLite WASM）单文件数据库，含单实例锁与自动备份，无需外部服务
+- **Writing workbench**: a chapter sidebar, text editor and AI panel; focus mode keeps the manuscript and AI input visible, while narrow screens use sidebar drawers.
+- **Appearance and shortcuts**: light, dark and system themes; adjustable accent color, text font and line width; `Ctrl+K` navigation and shortcuts for saving, switching chapters, finalizing and focus mode.
+- **Streaming writing conversations**: one active chat run per book, cancellation on disconnect, interrupted-run recovery and visible writing status. The server distinguishes manuscript output from discussion; inserted prose is saved automatically, and chat follows new messages.
+- **Outline workbench**: a chapter timeline, beat editing and drag-and-drop ordering, pacing indicators, suggestions for missing chapters, AI pacing feedback and volume summaries.
+- **Agent workspace**: separate read-only discussion and writing execution modes, with tools allowed according to the task profile.
+- **Characters, worldbuilding and story ledger**: AI proposes changes; accepted story events are recorded with optimistic locking and an audit trail.
+- **Context management**: a budgeted context-provider pipeline, four-section conversation summaries, summary inheritance across compression, stale-source detection and per-conversation usage and context breakdowns.
+- **BYOK providers and models**: add providers, edit keys and model lists, and choose the active model. Keys stay in the local server database; configuration responses return masked values.
+- **Local retrieval-augmented generation (RAG)**: chapter text is split into chunks and indexed with local embeddings using `@huggingface/transformers`. Same-book cosine top-k retrieval supports the context pipeline, evidence search and LLM tools; embedding computation stays on your machine.
+- **Style library**: manage author style cards with a persona, fingerprint, rules and examples, and run style checks.
+- **Local persistence**: a single sql.js (SQLite WASM) database file, with a single-instance lock and automatic backups; no external database service required.
 
-## 快速开始
+## Quick start
 
-推荐 Node.js 24.x；也支持 Node.js 22.13+（22.x）或 26+。
+Node.js 24.x is recommended. Node.js 22.13+ (22.x) and 26+ are also supported.
 
-从 [最新 Release](https://github.com/1while1/Plotforge/releases/latest) 下载源码并解压，进入项目目录后运行：
+Download and extract the source from the [latest Release](https://github.com/1while1/Plotforge/releases/latest), open the project directory and run:
 
 ```bash
 npm ci
-npm run build   # 前端为 React + Vite，构建产物输出到 public/
+npm run build   # Build the React + Vite frontend into public/
 npm start
 ```
 
-打开 http://localhost:3000 ，在「设置 → 模型接口」添加 OpenAI 兼容服务商（接口地址、API Key 与模型列表），再激活要使用的模型即可开始写作。
+Open http://localhost:3000. In **Settings → Model API** (设置 → 模型接口), add an OpenAI-compatible provider with its base URL, API key and model list, then activate a model. The application interface is currently in Chinese; this language switch changes the GitHub documentation.
 
-首次启动会下载本地 Embedding 模型（约 90MB，用于章节向量索引与检索），之后完全离线可用。
+The first launch downloads the local embedding model (about 90 MB) for chapter indexing and retrieval. Once it is cached, local writing, storage and embedding retrieval can work offline. Cloud LLM calls still require a network connection.
 
-端口可用环境变量覆盖：`PORT=8080 npm start`。前端开发调试可用 `npm run dev`（Vite 热更新），代理默认连接 `http://127.0.0.1:3110`，可用 `MOZHEN_DEV_ORIGIN` 指定后端地址。
+Override the port with `PORT=8080 npm start`. For frontend development, `npm run dev` starts Vite with hot reload. Its proxy defaults to `http://127.0.0.1:3110`; set `MOZHEN_DEV_ORIGIN` to use another backend address.
 
-## 当前 dev 的依赖安全更新
+## Dependency security updates on dev
 
-dev 已接收依赖安全修复；当前正式 Release 仍为 1.2.0。试用这些修复请使用 dev 分支源码，确认稳定后再发布正式版本。
+The `dev` branch includes dependency security fixes; the current stable Release is still 1.2.0. Use the `dev` branch source to try these updates. A stable version will follow after validation.
 
-本地 Embedding 改用 Hugging Face Transformers.js 的 q8 CPU 运行时，模型缓存默认保存在 `data/embedding-cache`；可用 `NOVEL_EMBED_CACHE_DIR` 指定缓存目录，`HF_ENDPOINT` 指定模型下载地址。
+Local embeddings now use the Hugging Face Transformers.js q8 CPU runtime. The default model cache is `data/embedding-cache`; set `NOVEL_EMBED_CACHE_DIR` to change it, or `HF_ENDPOINT` to change the model download endpoint.
 
-从旧版升级时：
+When upgrading from an older version:
 
-1. 停止自己的应用实例，并备份 `data/novel.db`。
-2. 在执行 `npm ci` 前，把旧 `node_modules/@xenova/transformers/.cache` 中的模型缓存内容复制到 `data/embedding-cache`（或设置的缓存目录）。没有旧缓存时，首次启动需要联网下载模型。
-3. 执行 `npm ci`、`npm run build` 后启动。迁移 033 会失效旧章节和范文向量，保留正文、范文与其他业务内容；定稿章节会自动重建索引，期间语义检索可能暂时降级。使用离线范文语义选样的维护者需通过 `server/style/retrieve.indexSamples(packId)` 重建对应风格包向量。
+1. Stop your own application instance and back up `data/novel.db`.
+2. Before running `npm ci`, copy the contents of the old `node_modules/@xenova/transformers/.cache` model cache into `data/embedding-cache` (or your configured cache directory). Without an existing cache, the first launch needs a network connection to download the model.
+3. Run `npm ci` and `npm run build`, then start the application. Migration 033 invalidates old chapter and style-example vectors while preserving text and other business data. Finalized chapters are reindexed automatically; semantic retrieval may temporarily fall back during rebuilding. Maintainers using offline semantic style-example selection must rebuild the relevant style-pack vectors with `server/style/retrieve.indexSamples(packId)`.
 
-回滚时使用升级前的数据库备份及其对应依赖，避免混用两个运行时的向量。
+To roll back, use the pre-upgrade database backup with its matching dependencies. Avoid mixing vectors from the two runtimes.
 
-## 示例数据
+## Demo data
 
-仓库不带任何真实作品。想快速体验各工作台，可以播种两部示例作品（各一卷四章，含人物与世界观条目）：
+The repository contains no real manuscripts. To explore the workbenches, seed two fictional example stories, each with one volume, four chapters, characters and worldbuilding entries:
 
 ```bash
 node tools/seed-demo.js
 ```
 
-重复执行是安全的：同名书籍会被跳过。也可用 `npm run seed`；设置 `NOVEL_DB_FILE` 可将示例播种到独立临时库。
+Running it again is safe: books with the same title are skipped. You can also use `npm run seed`; set `NOVEL_DB_FILE` to seed an isolated temporary database.
 
-## 测试
+## Tests
 
 ```bash
-# 建议指向独立临时库，避免碰本地数据（bash / zsh）
+# Use an isolated temporary database to protect your local data (bash / zsh)
 NOVEL_DB_FILE="$(mktemp -d)/qa.db" npm test
-npm run test:fe  # 前端组件测试（vitest）
+npm run test:fe  # Frontend component tests (Vitest)
 ```
 
-Windows PowerShell：
+Windows PowerShell:
 
 ```powershell
 $env:NOVEL_DB_FILE = Join-Path ([IO.Path]::GetTempPath()) ("plotforge-qa-" + [guid]::NewGuid() + ".db")
@@ -80,32 +82,32 @@ npm run test:fe
 Remove-Item Env:NOVEL_DB_FILE
 ```
 
-## 技术栈
+## Technology stack
 
-- 前端：React 19 + react-router + Vite，Tailwind CSS 4 与 Radix UI（`frontend/`，构建产物经 Express 静态服务）
-- 后端：Node.js + Express 5，sql.js（SQLite WASM）持久化到 `data/novel.db`
-- 检索：`@huggingface/transformers` 本地 Embedding + 余弦检索（`server/vector/`），向量存于同一份 SQLite 库
-- LLM：OpenAI 兼容协议，设置页可切换服务商与模型
+- Frontend: React 19 + react-router + Vite, Tailwind CSS 4 and Radix UI (`frontend/`, with built assets served by Express).
+- Backend: Node.js + Express 5; sql.js (SQLite WASM), persisted to `data/novel.db`.
+- Retrieval: local `@huggingface/transformers` embeddings and cosine search (`server/vector/`); vectors live in the same SQLite database.
+- LLM: OpenAI-compatible protocol, with provider and model selection in Settings.
 
-## 目录结构
+## Project structure
 
+```text
+frontend/  React application source: pages, components, hooks and libraries
+public/    Built frontend and static assets
+server/    Express routes, domain services, context pipeline, LLM gateway and tools
+test/      node:test unit and integration tests
+tools/     Command-line tools for seeding, backups and distillation
 ```
-frontend/  React 单页应用源码（页面 / 组件 / hooks / lib）
-public/    前端构建产物与静态资源
-server/    Express 路由、领域服务、上下文管道、LLM 网关、工具系统
-test/      node:test 单元与集成测试
-tools/     播种、备份、蒸馏等命令行工具
-```
 
-## 版本与参与
+## Versions and contributing
 
-- [正式版本与下载](https://github.com/1while1/Plotforge/releases) · [更新记录](CHANGELOG.md)
-- [问题反馈与功能建议](https://github.com/1while1/Plotforge/issues/new/choose) · [贡献指南](CONTRIBUTING.md)
-- [安全说明与私密漏洞报告](SECURITY.md)
+- [Releases and downloads](https://github.com/1while1/Plotforge/releases) · [Changelog](CHANGELOG.md)
+- [Bug reports and feature requests](https://github.com/1while1/Plotforge/issues/new/choose) · [Contributing guide](CONTRIBUTING.md)
+- [Security information and private vulnerability reporting](SECURITY.md)
 
-正式版本以 `v主版本.次版本.补丁版本` 标签标记，下载时优先使用最新稳定 Release。当前提供源码，需要按上面的步骤安装依赖并构建。
+Stable versions use `vMAJOR.MINOR.PATCH` tags. Prefer the latest stable Release for downloads. Releases currently provide source code; install dependencies and build using the steps above.
 
-分支约定：`main` 是稳定分支（仓库默认），`dev` 接收脱敏后的最新代码，供验证与试用。确认稳定且 CI 通过后，维护者才将 `main` 快进到对应 `dev` 提交；CI 不会自动晋级。功能与依赖更新 PR 请提交到 `dev`。
+Branch policy: `main` is the stable, default branch. `dev` receives the latest sanitized code for validation and testing. After stability is confirmed and CI passes, maintainers fast-forward `main` to the selected `dev` commit. CI does not promote automatically. Target `dev` for feature and dependency pull requests.
 
 ## License
 

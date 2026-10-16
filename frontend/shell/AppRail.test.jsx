@@ -40,6 +40,7 @@ describe("railContext", () => {
 	it("写作页与非法路由不显示；其余页面给出书 id 与高亮项", () => {
 		expect(railContext("#/book/7")).toBeNull();
 		expect(railContext("#/nope")).toBeNull();
+		expect(railContext("#/start")).toBeNull();
 		expect(railContext("#/")).toEqual({ bookId: null, active: "shelf" });
 		expect(railContext("#/agent")).toEqual({ bookId: null, active: "agent" });
 		expect(railContext("#/book/7/workbench/ledger?tab=proposals")).toEqual({

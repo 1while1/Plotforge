@@ -42,7 +42,8 @@ function decode(s) {
 export function railContext(hash) {
 	const h = hash || "#/";
 	const route = resolveRoute(h);
-	if (route.redirect || route.kind === "book") return null;
+	if (route.redirect || route.kind === "book" || route.kind === "start")
+		return null;
 	const m = h.match(/^#\/book\/([^/?]+)/);
 	const bookId = (m && decode(m[1])) || null;
 	if (route.kind === "workbench") {

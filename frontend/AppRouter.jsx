@@ -2,7 +2,7 @@
 // 显隐/委托语义 ＋ :698-730 hashchange 导航守卫，换成 HashRouter ＋ 受控 <Routes> ＋ 守卫门。
 //
 // 设计要点（与 legacy 逐字等值）：
-// 1) 显隐：每次进入路由先对 10 个 #page-* 无守卫 classList.add('hidden')，再显示目标
+// 1) 显隐：每次进入路由先对 11 个 #page-*（含开始界面 #page-start）无守卫 classList.add('hidden')，再显示目标
 //    （等值 :121-123）；兜底重定向用 `location.hash='#/'`（push 语义，禁 replace）。
 // 2) 守卫门：commit 前跑 WorkspaceState.beforeNavigate({from,to,retry,discard})，
 //    放行才 noteDeparture(from,to) 并提交渲染；失败回退 `location.hash=from`
@@ -34,6 +34,10 @@ import { mount as mountProfile } from "./pages/ProfilePage.jsx";
 import { mount as mountReadPage } from "./pages/ReadPage.jsx";
 import { mount as mountSettings } from "./pages/SettingsPage.jsx";
 import { mount as mountShelf } from "./pages/ShelfPage.jsx";
+import {
+	mount as mountStart,
+	unmount as unmountStart,
+} from "./pages/StartPage.jsx";
 import { mount as mountStyleLab } from "./pages/StyleLabPage.jsx";
 import { mountWorkbenchPage } from "./pages/WorkbenchPage.jsx";
 
@@ -48,6 +52,7 @@ const PAGE_IDS = [
 	"stylelab",
 	"cards",
 	"profile",
+	"start",
 ];
 
 function currentHash() {
@@ -100,6 +105,9 @@ function runDelegate(route) {
 		case "shelf":
 			mountShelf();
 			break;
+		case "start":
+			mountStart();
+			break;
 		default:
 			break;
 	}
@@ -107,6 +115,8 @@ function runDelegate(route) {
 
 function applyRoute(route) {
 	hideAllPages();
+	// 开始界面的三维沙盘离开即拆，不让隐藏的画布继续占用 GPU
+	if (route.kind !== "start") unmountStart();
 	if (route.redirect) {
 		window.location.hash = route.redirect; // push 语义（等值 :218）
 		return;
@@ -205,6 +215,7 @@ export default function AppRouter() {
 				<Route path="/profile" element={<RouteEffect rawHash={committed} />} />
 				<Route path="/settings" element={<RouteEffect rawHash={committed} />} />
 				<Route path="/agent" element={<RouteEffect rawHash={committed} />} />
+				<Route path="/start" element={<RouteEffect rawHash={committed} />} />
 				<Route path="/book/*" element={<RouteEffect rawHash={committed} />} />
 				<Route path="*" element={<RouteEffect rawHash={committed} />} />
 			</Routes>

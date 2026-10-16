@@ -137,6 +137,14 @@ describe("resolveRoute（legacy app.js route() 逐字对位）", () => {
 		expect(resolveRoute("#/agent").pageId).toBe("page-agent");
 	});
 
+	it("R1-14b 开始界面 #/start 精确匹配；#/ 仍是书架，带尾巴的 start 走兜底", () => {
+		expect(resolveRoute("#/start").kind).toBe("start");
+		expect(resolveRoute("#/start").pageId).toBe("page-start");
+		expect(resolveRoute("#/").kind).toBe("shelf");
+		expect(resolveRoute("").kind).toBe("shelf");
+		expect(resolveRoute("#/start/x").kind).toBe("redirect");
+	});
+
 	it("R1-15 兜底重定向：#foo/#/unknown/#/book（无尾斜杠）→ #/（:217-219 push）", () => {
 		for (const h of ["#foo", "#/unknown", "#/book"]) {
 			const r = resolveRoute(h);

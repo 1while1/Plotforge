@@ -35,6 +35,7 @@ function createApp() {
   app.use('/api/books', require('./routes/world'));
   app.use('/api/books', require('./routes/outline'));
   app.use('/api/books', require('./routes/chat'));
+  app.use('/api/start', require('./routes/start'));
   app.use('/api/style-lab', require('./routes/styleLab'));
   app.use('/api/settings', require('./routes/settings'));
   app.use('/api/agent', require('./routes/agent'));

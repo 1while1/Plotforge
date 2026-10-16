@@ -26,4 +26,10 @@ function resolveMountPoint() {
 	return created;
 }
 
+// 打开项目（地址不带 hash）默认落到开始界面；#/ 仍是书架，已有链接与书签不受影响。
+// replaceState 不产生历史记录，从开始界面按后退会直接离开本站而不是回到空 hash。
+if (!window.location.hash) {
+	window.history.replaceState(null, "", "#/start");
+}
+
 createRoot(resolveMountPoint()).render(<App />);

@@ -11,6 +11,7 @@ A local-first AI writing studio for long-form creators. Plotforge runs on your o
 
 ## Features
 
+- **Story-world start screen (dev)**: books become floating archipelagos, with volumes as islands, chapters as settlements, characters as inhabitants and worldbuilding entries as landmarks. A read-only guide discusses progress using your configured model; a list fallback keeps navigation available when WebGL is unavailable. This screen visualizes story data and does not simulate autonomous characters.
 - **Writing workbench**: a chapter sidebar, text editor and AI panel; focus mode keeps the manuscript and AI input visible, while narrow screens use sidebar drawers.
 - **Appearance and shortcuts**: light, dark and system themes; adjustable accent color, text font and line width; `Ctrl+K` navigation and shortcuts for saving, switching chapters, finalizing and focus mode.
 - **Streaming writing conversations**: one active chat run per book, cancellation on disconnect, interrupted-run recovery and visible writing status. The server distinguishes manuscript output from discussion; inserted prose is saved automatically, and chat follows new messages.

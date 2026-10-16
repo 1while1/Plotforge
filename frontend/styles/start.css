@@ -1,0 +1,845 @@
+/* 开始界面「掌中世界」（#/start）。一方墨砚做沙盘：雾青天色、砚石黛灰、鎏金点睛、朱砂只用在印章上。
+   颜色只在本页作用域内定义，不进全站 token；三维场景经 --st-fog 读取雾色，与 CSS 背景同色接缝。 */
+#page-start {
+	--st-mist: #e9f1ee;
+	--st-mist-2: #cfe0dc;
+	--st-mist-3: #a3bfbd;
+	--st-fog: #cddfdb;
+	--st-ink: #1c2633;
+	--st-ink-2: #3f4d5c;
+	--st-gilt: #c9a24a;
+	--st-gilt-hi: #dcb862;
+	--st-seal: #b0402f;
+	--st-jade: #5f8f78;
+	--st-glow: #4fcfbe;
+	--st-paper: rgba(247, 250, 248, 0.84);
+	--st-line: rgba(28, 38, 51, 0.14);
+	--st-display: "LXGW WenKai", "KaiTi", "STKaiti", "Kaiti SC", "BiauKai", serif;
+	min-height: 100vh;
+	color: var(--st-ink);
+	font-family: var(--mz-ui-font);
+}
+[data-theme="dark"] #page-start {
+	--st-mist: #22303b;
+	--st-mist-2: #16212b;
+	--st-mist-3: #0b1118;
+	--st-fog: #15202a;
+	--st-ink: #e6eeea;
+	--st-ink-2: #a9b8b4;
+	--st-paper: rgba(20, 29, 38, 0.82);
+	--st-line: rgba(230, 238, 234, 0.14);
+}
+
+#page-start .start {
+	position: relative;
+	min-height: 100vh;
+	overflow: hidden;
+	background: radial-gradient(
+		ellipse 120% 90% at 50% 12%,
+		var(--st-mist) 0%,
+		var(--st-mist-2) 48%,
+		var(--st-mist-3) 100%
+	);
+}
+
+/* 标签按深度写 z-index（最高约 1000），舞台自成层叠上下文，免得盖住停靠区面板 */
+#page-start .start-stage {
+	position: absolute;
+	inset: 0;
+	z-index: 0;
+}
+#page-start .start-canvas {
+	display: block;
+	width: 100%;
+	height: 100%;
+	cursor: grab;
+	touch-action: none;
+}
+#page-start .start-canvas:active {
+	cursor: grabbing;
+}
+#page-start .start-stage-hint {
+	position: absolute;
+	inset: 0;
+	display: grid;
+	place-items: center;
+	margin: 0;
+	font-family: var(--st-display);
+	font-size: 18px;
+	letter-spacing: 0.2em;
+	color: var(--st-ink-2);
+}
+
+/* 岛名标签：DOM 按钮跟随三维坐标，下方一根细线落到岛顶 */
+#page-start .start-labels {
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+}
+#page-start .start-island-label {
+	position: absolute;
+	top: 0;
+	left: 0;
+	display: inline-flex;
+	align-items: baseline;
+	gap: 6px;
+	padding: 4px 10px 5px;
+	border: 1px solid rgba(233, 241, 238, 0.18);
+	border-radius: 999px;
+	background: rgba(22, 31, 42, 0.74);
+	color: #eef4f1;
+	white-space: nowrap;
+	cursor: pointer;
+	pointer-events: auto;
+	transition:
+		background-color 0.2s,
+		color 0.2s;
+	will-change: transform;
+}
+#page-start .start-island-label::after {
+	content: "";
+	position: absolute;
+	left: 50%;
+	top: 100%;
+	width: 1px;
+	height: 14px;
+	background: currentColor;
+	opacity: 0.45;
+}
+#page-start .start-island-label:hover {
+	background: rgba(22, 31, 42, 0.9);
+}
+#page-start .start-island-label.is-selected {
+	background: var(--st-gilt);
+	border-color: var(--st-gilt-hi);
+	color: #1c2633;
+}
+#page-start .start-island-name {
+	font-family: var(--st-display);
+	font-size: 15px;
+	letter-spacing: 0.04em;
+	max-width: 11em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+#page-start .start-island-meta {
+	font-family: var(--mz-mono);
+	font-size: 11px;
+	opacity: 0.75;
+}
+
+/* 页眉：印章＋品牌＋去书架 */
+#page-start .start-head {
+	position: absolute;
+	top: 20px;
+	left: 28px;
+	right: 28px;
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	pointer-events: none;
+}
+#page-start .start-head > * {
+	pointer-events: auto;
+}
+#page-start .start-seal {
+	display: inline-grid;
+	place-items: center;
+	width: 40px;
+	height: 40px;
+	border-radius: 5px;
+	background: var(--st-seal);
+	color: #fbeee8;
+	font-family: var(--st-display);
+	font-size: 15px;
+	line-height: 1;
+	writing-mode: vertical-rl;
+	letter-spacing: 0.08em;
+	box-shadow: inset 0 0 0 2px rgba(251, 238, 232, 0.35);
+	transform: rotate(-4deg);
+}
+#page-start .start-brand {
+	font-size: 13px;
+	letter-spacing: 0.3em;
+	color: var(--st-ink-2);
+}
+#page-start .start-shelf-link {
+	margin-left: auto;
+}
+
+/* 竖排题签：像贴在砚盒上的签条 */
+#page-start .start-title {
+	position: absolute;
+	top: 84px;
+	left: 30px;
+	display: flex;
+	flex-direction: row-reverse;
+	align-items: flex-start;
+	gap: 8px;
+	pointer-events: none;
+}
+#page-start .start-title h1,
+#page-start .start-title p {
+	writing-mode: vertical-rl;
+}
+#page-start .start-title h1 {
+	margin: 0;
+	padding: 14px 10px;
+	border: 1px solid var(--st-line);
+	border-radius: 3px;
+	background: var(--st-paper);
+	font-family: var(--st-display);
+	font-weight: 400;
+	font-size: clamp(30px, 3.4vw, 44px);
+	line-height: 1;
+	letter-spacing: 0.2em;
+	color: var(--st-ink);
+	box-shadow: 0 10px 24px -18px rgba(16, 24, 32, 0.5);
+}
+#page-start .start-title p {
+	margin: 6px 0 0;
+	font-size: 12px;
+	letter-spacing: 0.3em;
+	color: var(--st-ink-2);
+}
+
+/* 底部停靠区：左为世界卡与图例，右为砚灵 */
+#page-start .start-dock {
+	position: absolute;
+	left: 28px;
+	right: 28px;
+	bottom: 24px;
+	display: flex;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: 20px;
+	pointer-events: none;
+	z-index: 1;
+}
+#page-start .start-dock > * {
+	pointer-events: auto;
+}
+#page-start .start-dock-left {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	width: min(380px, 100%);
+}
+
+#page-start .start-card,
+#page-start .start-guide {
+	border: 1px solid var(--st-line);
+	border-radius: 14px;
+	background: var(--st-paper);
+	box-shadow: 0 18px 40px -22px rgba(16, 24, 32, 0.45);
+	backdrop-filter: blur(10px) saturate(1.1);
+}
+#page-start .start-card {
+	padding: 18px 20px 16px;
+}
+#page-start .start-eyebrow {
+	margin: 0 0 6px;
+	font-size: 12px;
+	letter-spacing: 0.12em;
+	color: var(--st-ink-2);
+}
+#page-start .start-card-title {
+	margin: 0;
+	font-family: var(--st-display);
+	font-weight: 400;
+	font-size: 28px;
+	line-height: 1.2;
+}
+#page-start .start-card-title::before {
+	content: "《";
+	margin-left: -0.5em;
+	opacity: 0.5;
+}
+#page-start .start-card-title::after {
+	content: "》";
+	opacity: 0.5;
+}
+#page-start .start-card.is-empty .start-card-title::before,
+#page-start .start-card.is-empty .start-card-title::after {
+	content: none;
+}
+#page-start .start-card-intro {
+	display: -webkit-box;
+	margin: 8px 0 0;
+	overflow: hidden;
+	font-size: 13px;
+	line-height: 1.65;
+	color: var(--st-ink-2);
+	-webkit-line-clamp: 2;
+	-webkit-box-orient: vertical;
+}
+#page-start .start-facts {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 8px;
+	margin: 14px 0 0;
+	padding: 12px 0 0;
+	border-top: 1px solid var(--st-line);
+}
+#page-start .start-fact dt {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 12px;
+	color: var(--st-ink-2);
+}
+#page-start .start-fact dd {
+	margin: 2px 0 0;
+	font-size: 12px;
+	color: var(--st-ink-2);
+}
+#page-start .start-fact dd b {
+	margin-right: 3px;
+	font-family: var(--mz-mono);
+	font-size: 22px;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	color: var(--st-ink);
+}
+#page-start .start-card-last {
+	margin: 10px 0 0;
+	font-size: 13px;
+	color: var(--st-ink-2);
+}
+#page-start .start-card-actions {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-top: 14px;
+}
+#page-start .start-stepper {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	margin-left: auto;
+}
+#page-start .start-step-count {
+	min-width: 3.2em;
+	font-family: var(--mz-mono);
+	font-size: 12px;
+	text-align: center;
+	color: var(--st-ink-2);
+}
+#page-start .start-load-error {
+	margin: 0;
+	padding: 10px 14px;
+	border-radius: 10px;
+	background: rgba(176, 64, 47, 0.12);
+	font-size: 13px;
+}
+
+/* 图例：形状与三维地貌一一对应 */
+#page-start .start-legend {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 14px;
+	align-self: flex-start;
+	margin: 0;
+	padding: 6px 12px;
+	border: 1px solid var(--st-line);
+	border-radius: 999px;
+	background: var(--st-paper);
+	backdrop-filter: blur(8px);
+	list-style: none;
+	font-size: 12px;
+	color: var(--st-ink-2);
+}
+#page-start .start-legend li,
+#page-start .start-fact dt {
+	--mark: var(--st-ink-2);
+}
+#page-start .start-legend li::before,
+#page-start .start-fact dt::before {
+	content: "";
+	display: inline-block;
+	width: 9px;
+	height: 9px;
+	margin-right: 6px;
+	vertical-align: -1px;
+	background: var(--mark);
+}
+#page-start .start-fact dt::before {
+	margin-right: 0;
+}
+#page-start .is-isle::before {
+	--mark: #7fb069;
+	width: 12px;
+	clip-path: polygon(0 30%, 100% 30%, 70% 100%, 30% 100%);
+}
+#page-start .is-town::before,
+#page-start .is-town dt::before {
+	--mark: #b5452f;
+	clip-path: polygon(
+		50% 0,
+		100% 45%,
+		85% 45%,
+		85% 100%,
+		15% 100%,
+		15% 45%,
+		0 45%
+	);
+}
+#page-start .is-folk::before,
+#page-start .is-folk dt::before {
+	--mark: var(--st-gilt);
+	clip-path: polygon(
+		50% 0,
+		66% 18%,
+		50% 36%,
+		34% 18%,
+		50% 0,
+		50% 36%,
+		90% 100%,
+		10% 100%,
+		50% 36%
+	);
+}
+#page-start .is-mark::before,
+#page-start .is-mark dt::before {
+	--mark: #3a4150;
+	clip-path: polygon(35% 0, 65% 0, 80% 100%, 20% 100%);
+}
+
+/* 选中群岛后的细节名牌：各卷岛名、地标、主角 */
+#page-start .start-detail-label {
+	position: absolute;
+	top: 0;
+	left: 0;
+	padding: 1px 7px 2px;
+	border-radius: 4px;
+	font-family: var(--st-display);
+	font-size: 12px;
+	white-space: nowrap;
+	pointer-events: none;
+	visibility: hidden;
+	will-change: transform;
+	color: #f4f1e8;
+	background: rgba(22, 31, 42, 0.62);
+	text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+#page-start .start-detail-label.is-region {
+	padding: 2px 9px 3px;
+	border: 1px solid rgba(220, 184, 98, 0.55);
+	background: rgba(28, 38, 51, 0.72);
+	color: var(--st-gilt-hi);
+	font-size: 13px;
+	letter-spacing: 0.06em;
+}
+#page-start .start-detail-label.is-landmark {
+	background: rgba(176, 64, 47, 0.78);
+	color: #fbeee8;
+	border-radius: 2px 8px 2px 8px;
+}
+#page-start .start-detail-label.is-lead {
+	background: rgba(201, 162, 74, 0.86);
+	color: #1c2633;
+	border-radius: 999px;
+	font-size: 11px;
+}
+
+/* 天色：时刻＋天气，跟写作状态挂钩 */
+#page-start .start-sky {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 8px;
+	margin-left: auto;
+	padding: 5px 12px;
+	border: 1px solid var(--st-line);
+	border-radius: 999px;
+	background: var(--st-paper);
+	backdrop-filter: blur(8px);
+	font-family: var(--st-display);
+	font-size: 13px;
+	color: var(--st-ink);
+}
+#page-start .start-sky small {
+	font-family: inherit;
+	font-size: 11px;
+	color: var(--st-ink-2);
+}
+#page-start .start-sky + .start-shelf-link {
+	margin-left: 0;
+}
+#page-start .start[data-daypart="night"] .start-brand,
+#page-start .start[data-daypart="dusk"] .start-brand,
+#page-start .start[data-daypart="night"] .start-title p,
+#page-start .start[data-daypart="dusk"] .start-title p {
+	color: #e9eef0;
+	text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+/* 卡片里的各卷岛屿 */
+#page-start .start-regions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin: 10px 0 0;
+	padding: 0;
+	list-style: none;
+	font-size: 12px;
+	color: var(--st-ink);
+}
+#page-start .start-regions li {
+	display: inline-flex;
+	gap: 5px;
+	padding: 2px 9px 3px;
+	border: 1px solid var(--st-line);
+	border-radius: 999px;
+}
+#page-start .start-regions span {
+	color: var(--st-gilt);
+	font-family: var(--st-display);
+}
+#page-start .is-gem::before {
+	--mark: var(--st-glow);
+	clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+}
+
+/* 按钮 */
+#page-start .start-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	height: 36px;
+	padding: 0 16px;
+	border: 1px solid transparent;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--st-ink);
+	font: inherit;
+	font-size: 14px;
+	text-decoration: none;
+	cursor: pointer;
+	transition:
+		background-color 0.18s,
+		border-color 0.18s,
+		color 0.18s;
+}
+#page-start .start-btn:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+#page-start .start-btn.is-gilt {
+	background: var(--st-gilt);
+	color: #1c2633;
+	font-weight: 600;
+	letter-spacing: 0.06em;
+}
+#page-start .start-btn.is-gilt:hover {
+	background: var(--st-gilt-hi);
+}
+#page-start .start-btn.is-ink {
+	background: #1c2633;
+	color: #eef4f1;
+}
+[data-theme="dark"] #page-start .start-btn.is-ink {
+	background: #e6eeea;
+	color: #1c2633;
+}
+#page-start .start-btn.is-ghost {
+	border-color: var(--st-line);
+	background: var(--st-paper);
+	backdrop-filter: blur(8px);
+}
+#page-start .start-btn.is-ghost:hover {
+	border-color: var(--st-gilt);
+}
+#page-start .start-btn.is-quiet {
+	height: 30px;
+	padding: 0 10px;
+	font-size: 16px;
+}
+#page-start .start-btn.is-quiet:hover {
+	background: rgba(28, 38, 51, 0.08);
+}
+#page-start .start-btn:focus-visible,
+#page-start .start-island-label:focus-visible,
+#page-start .start-guide-quick button:focus-visible,
+#page-start .start-fallback button:focus-visible {
+	outline: 2px solid var(--st-gilt);
+	outline-offset: 2px;
+}
+
+/* 砚灵对话 */
+#page-start .start-guide {
+	display: flex;
+	flex-direction: column;
+	width: min(360px, 100%);
+	max-height: min(460px, calc(100vh - 140px));
+}
+#page-start .start-guide-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 12px 16px 10px;
+	border-bottom: 1px solid var(--st-line);
+}
+#page-start .start-guide-face {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 7px;
+	width: 34px;
+	height: 34px;
+	border-radius: 50%;
+	background: radial-gradient(circle at 50% 58%, #18212c 0 46%, #f3f5f1 47%);
+	box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.08);
+}
+#page-start .start-guide-face::before {
+	content: "";
+	position: absolute;
+	top: -7px;
+	left: 50%;
+	width: 6px;
+	height: 6px;
+	margin-left: -3px;
+	border-radius: 50% 50% 50% 0;
+	background: var(--st-gilt);
+	transform: rotate(-45deg);
+}
+#page-start .start-guide-face i {
+	width: 4px;
+	height: 7px;
+	margin-top: 5px;
+	border-radius: 2px;
+	background: var(--st-glow);
+	box-shadow: 0 0 6px var(--st-glow);
+}
+#page-start .start-guide-face[data-state="thinking"] i {
+	animation: start-eye 0.9s ease-in-out infinite alternate;
+}
+@keyframes start-eye {
+	from {
+		opacity: 0.35;
+	}
+	to {
+		opacity: 1;
+	}
+}
+#page-start .start-guide-name {
+	margin: 0;
+	font-family: var(--st-display);
+	font-weight: 400;
+	font-size: 18px;
+	line-height: 1.1;
+}
+#page-start .start-guide-status {
+	margin: 2px 0 0;
+	font-size: 12px;
+	color: var(--st-ink-2);
+}
+#page-start .start-guide-log {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	padding: 12px 16px 4px;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+#page-start .start-guide-msg {
+	max-width: 88%;
+	margin: 0;
+	padding: 8px 12px;
+	border-radius: 12px;
+	font-size: 13px;
+	line-height: 1.7;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+#page-start .start-guide-msg.is-guide {
+	align-self: flex-start;
+	border-top-left-radius: 4px;
+	background: rgba(95, 143, 120, 0.13);
+}
+#page-start .start-guide-msg.is-user {
+	align-self: flex-end;
+	border-top-right-radius: 4px;
+	background: #1c2633;
+	color: #eef4f1;
+}
+[data-theme="dark"] #page-start .start-guide-msg.is-user {
+	background: #3b4b5b;
+}
+#page-start .start-guide-msg.is-pending {
+	color: var(--st-ink-2);
+}
+#page-start .start-guide-cut {
+	margin-left: 4px;
+	font-size: 12px;
+	opacity: 0.7;
+}
+#page-start .start-guide-notice {
+	margin: 4px 16px 0;
+	font-size: 12px;
+	color: var(--st-seal);
+}
+#page-start .start-guide-notice a {
+	color: inherit;
+	font-weight: 600;
+}
+#page-start .start-guide-quick {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	padding: 6px 16px 0;
+}
+#page-start .start-guide-quick button {
+	padding: 4px 10px;
+	border: 1px solid var(--st-line);
+	border-radius: 999px;
+	background: transparent;
+	color: var(--st-ink);
+	font: inherit;
+	font-size: 12px;
+	cursor: pointer;
+}
+#page-start .start-guide-quick button:hover {
+	border-color: var(--st-gilt);
+}
+#page-start .start-guide-form {
+	display: flex;
+	align-items: flex-end;
+	gap: 8px;
+	padding: 10px 12px 12px;
+}
+#page-start .start-guide-form textarea {
+	flex: 1;
+	min-height: 36px;
+	max-height: 96px;
+	padding: 8px 12px;
+	border: 1px solid var(--st-line);
+	border-radius: 18px;
+	background: rgba(255, 255, 255, 0.55);
+	color: var(--st-ink);
+	font: inherit;
+	font-size: 13px;
+	line-height: 1.5;
+	resize: none;
+	field-sizing: content;
+}
+[data-theme="dark"] #page-start .start-guide-form textarea {
+	background: rgba(0, 0, 0, 0.2);
+}
+#page-start .start-guide-form textarea:focus-visible {
+	outline: 2px solid var(--st-gilt);
+	outline-offset: 1px;
+}
+#page-start .start-sr {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
+
+/* WebGL 不可用时的列表兜底 */
+#page-start .start-fallback {
+	position: absolute;
+	top: 30%;
+	left: 50%;
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 10px;
+	width: min(640px, 80vw);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	transform: translateX(-50%);
+}
+#page-start .start-fallback button {
+	display: inline-flex;
+	gap: 6px;
+	align-items: baseline;
+	padding: 8px 14px;
+	border: 1px solid var(--st-line);
+	border-radius: 999px;
+	background: var(--st-paper);
+	color: var(--st-ink);
+	cursor: pointer;
+}
+#page-start .start-fallback button.is-selected {
+	background: var(--st-gilt);
+	color: #1c2633;
+}
+
+@media (max-width: 900px) {
+	#page-start .start {
+		display: flex;
+		flex-direction: column;
+	}
+	#page-start .start-stage {
+		position: relative;
+		height: 60vh;
+		flex: none;
+	}
+	#page-start .start-title {
+		top: 70px;
+		left: 14px;
+	}
+	#page-start .start-title h1 {
+		padding: 10px 7px;
+		font-size: 24px;
+	}
+	#page-start .start-title p {
+		display: none;
+	}
+	#page-start .start-island-label {
+		padding: 3px 8px;
+	}
+	#page-start .start-island-name {
+		max-width: 6.5em;
+		font-size: 12px;
+	}
+	#page-start .start-island-meta,
+	#page-start .start-sky small,
+	#page-start .start-brand {
+		display: none;
+	}
+	#page-start .start-sky,
+	#page-start .start-shelf-link {
+		white-space: nowrap;
+	}
+	#page-start .start-head {
+		left: 16px;
+		right: 16px;
+		top: 14px;
+	}
+	#page-start .start-dock {
+		position: relative;
+		left: auto;
+		right: auto;
+		bottom: auto;
+		flex-direction: column;
+		align-items: stretch;
+		margin: -40px 14px 18px;
+	}
+	#page-start .start-dock-left,
+	#page-start .start-guide {
+		width: auto;
+	}
+	#page-start .start-guide {
+		max-height: none;
+	}
+	#page-start .start-guide-log {
+		max-height: 260px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	#page-start .start-guide-face[data-state="thinking"] i {
+		animation: none;
+	}
+	#page-start .start-btn,
+	#page-start .start-island-label {
+		transition: none;
+	}
+}

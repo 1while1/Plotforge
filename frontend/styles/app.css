@@ -11,6 +11,7 @@
 @import "./tokens.css";
 @import "./book-shell.css";
 @import "./app-pages.css";
+@import "./start.css";
 
 @import "tailwindcss/utilities.css" source(none);
 @source "../components/ui";

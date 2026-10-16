@@ -5,8 +5,8 @@
 //      **「手工 script 标签清零」判据**＝源内不存在指向构建产物路径（`/app/entry.js`）的手工标签：
 //      该字面量的唯一落点是 P6-2 ⑨ 的历史说明注释（恰 1 处，承 zero-global T1 的「注释行豁免」口径）；
 //      「产物面恰 1 个 `/app/entry.js` 且由 Vite 注入」由构建门禁（`npm run build` 后清点）见证。
-//   ② 壳 DOM 与入场 `public/index.html` 逐字等值（charter §1 红线 3）：`id=` 241 各恰一份／class 唯一
-//      词元 187／11 段注释锚逐字在位；**无静态 `#app-root`**（挂载点由 `entry.jsx` 的
+//   ② 壳 DOM 与入场 `public/index.html` 逐字等值（charter §1 红线 3）：`id=` 242 各恰一份／class 唯一
+//      词元 187／12 段注释锚逐字在位（开始界面 #page-start 后加，原 241／11）；**无静态 `#app-root`**（挂载点由 `entry.jsx` 的
 //      `resolveMountPoint()` 动态创建——P6-2 后生产与 dev 的统一路径，Plan §2.5-D2-3 备案）。
 //   ③ 退役面零残留（`legacy/*.js` 零命中、名单内 `window.*` 注释剥离后零命中）＋样式表全部走构建
 //      （UI 优化阶段 5 起源 HTML 零手工 `<link>`，`public/style.css` 已并入 `frontend/styles/base.css`）。
@@ -69,8 +69,9 @@ const GLOBAL_MARKERS = [
 ];
 const ALL = [...GLOBAL_NAMES, ...GLOBAL_MARKERS];
 
-// §2.5 壳基线清点：11 个段注释锚（立场＝逐字，含括注全角括号与空格）
+// §2.5 壳基线清点：12 个段注释锚（立场＝逐字，含括注全角括号与空格）
 const SHELL_ANCHORS = [
+	"<!-- ============ 开始界面（掌中世界，#/start；内容由 pages/StartPage.jsx 整容器接管） ============ -->",
 	"<!-- ============ 书架页 ============ -->",
 	"<!-- ============ 书籍工作台 ============ -->",
 	"<!-- ============ 专项工作台 ============ -->",
@@ -86,6 +87,7 @@ const SHELL_ANCHORS = [
 
 // 驱动与测试共同依赖的关键挂点（tools/system-browser-acceptance.cjs 面 + 三个挂载件叶容器）
 const SPOT_IDS = [
+	"page-start",
 	"page-shelf",
 	"page-book",
 	"page-workbench",
@@ -132,10 +134,10 @@ describe("T1 HTML 源契约（静态壳单一事实源＝frontend/index.html）"
 		expect(INDEX_HTML.match(/\/app\/entry\.js/g) || []).toHaveLength(1);
 	});
 
-	it("T1-2 壳 DOM 不变量：241 id 各恰一份／187 class 词元／11 段注释锚；无静态 #app-root", () => {
+	it("T1-2 壳 DOM 不变量：242 id 各恰一份／187 class 词元／12 段注释锚；无静态 #app-root", () => {
 		const ids = [...INDEX_HTML.matchAll(/id="([^"]+)"/g)].map((m) => m[1]);
-		expect(ids).toHaveLength(241);
-		expect(new Set(ids).size).toBe(241);
+		expect(ids).toHaveLength(242);
+		expect(new Set(ids).size).toBe(242);
 		for (const id of ids) {
 			expect(
 				INDEX_HTML.match(new RegExp(`id="${id}"`, "g")) || [],

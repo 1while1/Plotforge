@@ -11,9 +11,24 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
+import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+// 模块装载测试也创建真实 React root；在 jsdom 关闭前刷新并释放全部 root。
+const { mountedRoots } = vi.hoisted(() => ({ mountedRoots: [] }));
+vi.mock("react-dom/client", async (importOriginal) => {
+	const original = await importOriginal();
+	return {
+		...original,
+		createRoot(...args) {
+			const root = original.createRoot(...args);
+			mountedRoots.push(root);
+			return root;
+		},
+	};
+});
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "..", "..");
@@ -60,6 +75,9 @@ function buildShellHtml() {
 }
 
 function cleanup() {
+	act(() => {
+		for (const root of mountedRoots.splice(0)) root.unmount();
+	});
 	document.body.innerHTML = "";
 	delete window.App;
 	delete window.BookPage;
@@ -152,7 +170,10 @@ describe("T6 模块装载序契约（桥/桩退役后的唯一样式）", () => 
 		const runtime = await import("../lib/app-runtime.js");
 		const editor = await import("../components/ChapterEditorPanel.jsx");
 		const chat = await import("../components/ChatWorkspace.jsx");
-		await import("../entry.jsx");
+		await act(async () => {
+			await import("../entry.jsx");
+		});
+		expect(mountedRoots.length).toBeGreaterThan(0);
 		// App 单例（与 entry 同一模块图）
 		const app = runtime.getApp();
 		expect(app).toBeTruthy();
